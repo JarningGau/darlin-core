@@ -27,7 +27,10 @@ def get_long_description() -> str:
 setup(
     name="darlinpy",
     version=get_version(),
+    author="JarningGau",
+    author_email="jarninggau@gmail.com",
     description="Python implementation of CARLIN sequence analysis tools",
+    license="MIT",
     long_description=get_long_description(),
     long_description_content_type="text/markdown",
     url="https://github.com/jarninggau/darlinpy",
