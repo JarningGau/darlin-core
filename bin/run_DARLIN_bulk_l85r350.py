@@ -1,0 +1,1011 @@
+#!/usr/bin/env python3
+"""
+Bulk DNA/RNA DARLIN Array Processing Script
+"""
+
+import os
+import sys
+import gzip
+import hashlib
+import argparse
+import logging
+from collections import Counter
+from typing import Optional, Union, Sequence
+
+import pandas as pd
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from fuzzysearch import find_near_matches
+from tqdm import tqdm
+from umi_tools import UMIClusterer
+from darlinpy import analyze_sequences
+from darlinpy.config.amplicon_configs import load_carlin_config_by_locus
+
+
+# ============================================================================
+# Argument Parsing and Logging Setup
+# ============================================================================
+
+def setup_logging(log_file, log_level=logging.INFO):
+    """Setup logging configuration."""
+    logger = logging.getLogger(__name__)
+    logger.setLevel(log_level)
+    
+    # Remove existing handlers to avoid duplicates
+    logger.handlers = []
+    
+    # Create formatter - simplified format with time to seconds only
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', 
+                                  datefmt='%Y-%m-%d %H:%M:%S')
+    
+    # File handler
+    file_handler = logging.FileHandler(log_file, mode='w')
+    file_handler.setLevel(log_level)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    
+    # Console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(log_level)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+    
+    return logger
+
+
+def parse_arguments():
+    """Parse command line arguments."""
+    # Custom formatter that preserves formatting and shows defaults
+    class CustomFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+        pass
+    
+    example_text = '''
+Examples:
+  Basic usage (paired FASTQ, R1 UMI + R2 lineage barcode):
+    python run_DARLIN_bulk_l85r350.py \\
+        --sample-id LL583_bulk_DNA_CA \\
+        --fq1 ./fastq/GSM6924444_CC-DNA_LL583/SRR23027633_1.fastq.gz \\
+        --fq2 ./fastq/GSM6924444_CC-DNA_LL583/SRR23027633_2.fastq.gz \\
+        --umi-len 12 \\
+        --locus Col1a1 \\
+        --output-dir ./output \\
+        --reads-cutoff 1
+'''
+    
+    parser = argparse.ArgumentParser(
+        description='Bulk DNA/RNA DARLIN Array Processing Script',
+        formatter_class=CustomFormatter,
+        epilog=example_text
+    )
+    
+    # Required arguments
+    parser.add_argument('--sample-id', type=str, required=True,
+                        help='Sample ID for output directory naming')
+    parser.add_argument('--fq1', type=str, required=True,
+                        help='Path to forward reads FASTQ file')
+    parser.add_argument('--fq2', type=str, required=True,
+                        help='Path to reverse reads FASTQ file')
+    # Optional arguments
+    parser.add_argument('--locus', type=str, default='Col1a1',
+                        help='Locus name, options: Col1a1, Rosa, Tigre')
+    parser.add_argument('--umi-len', type=int, default=12,
+                        help='UMI length')
+    parser.add_argument('--output-dir', type=str, default='./output',
+                        help='Base output directory')
+    parser.add_argument('--min-bc-len', type=int, default=20,
+                        help='Minimum barcode length')
+    parser.add_argument('--reads-cutoff', type=int, default=1,
+                        help='Reads cutoff threshold')
+    parser.add_argument('--denoise-iter', type=int, default=1,
+                        help='Number of denoising iterations')
+    parser.add_argument('--umi-ld', type=int, nargs='+', default=[1],
+                        help='List of maximum edit/Hamming distances for UMI clustering (e.g. 1 2 3)')
+    parser.add_argument('--lb-hd-relative', type=float, nargs='+', default=[0.01],
+                        help='List of relative Hamming-distance thresholds for lineage barcode clustering (e.g. 0.01 0.02)')
+    parser.add_argument('--log-level', type=str, default='INFO',
+                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                        help='Logging level')
+    parser.add_argument('--test', action='store_true',
+                        help='Test mode: only process first 10000 lines (approximately 2500 reads)')
+    parser.add_argument('--saturation-analysis', action='store_true',
+                        help='Enable saturation analysis (only runs when this flag is provided)')
+    parser.add_argument('--sample-n', type=int, default=None,
+                        help='Sample n reads for analysis')
+    
+    return parser.parse_args()
+
+
+# ============================================================================
+# Utility Functions
+# ============================================================================
+
+def open_fastq_file(file_path):
+    """Open text or gz FASTQ in text mode."""
+    if file_path.endswith(".gz"):
+        return gzip.open(file_path, "rt")
+    return open(file_path, "r")
+
+
+def iter_fastq_raw(handle):
+    """
+    Minimal FASTQ iterator: read 4 lines per record.
+    Returns (read_id, seq, qual) as strings. No conversion on quality.
+    """
+    while True:
+        id_line = handle.readline()
+        if not id_line:
+            break
+        seq_line = handle.readline()
+        plus_line = handle.readline()
+        qual_line = handle.readline()
+
+        if not (seq_line and plus_line and qual_line):
+            raise ValueError("Incomplete FASTQ record encountered.")
+
+        if not id_line.startswith("@") or not plus_line.startswith("+"):
+            raise ValueError("Invalid FASTQ structure (missing @ or + line).")
+
+        read_id = id_line[1:].strip()
+        seq = seq_line.strip()
+        qual = qual_line.strip()
+        if len(seq) != len(qual):
+            raise ValueError(f"Length mismatch (seq {len(seq)} vs qual {len(qual)}) at read {read_id}")
+        yield read_id, seq, qual
+
+
+def iter_fastq_paired(handle1, handle2):
+    """
+    Paired FASTQ iterator: simultaneously read from two FASTQ files.
+    Returns (read_id1, seq1, qual1, read_id2, seq2, qual2) as tuples.
+    Stops when file 1 ends; raises if file 2 ends first.
+    """
+    while True:
+        id_line1 = handle1.readline()
+        if not id_line1:
+            break
+        seq_line1 = handle1.readline()
+        plus_line1 = handle1.readline()
+        qual_line1 = handle1.readline()
+
+        if not (seq_line1 and plus_line1 and qual_line1):
+            raise ValueError("Incomplete FASTQ record encountered in file 1.")
+
+        if not id_line1.startswith("@") or not plus_line1.startswith("+"):
+            raise ValueError("Invalid FASTQ structure (missing @ or + line) in file 1.")
+
+        id_line2 = handle2.readline()
+        if not id_line2:
+            raise ValueError("File 2 ended before file 1.")
+        seq_line2 = handle2.readline()
+        plus_line2 = handle2.readline()
+        qual_line2 = handle2.readline()
+
+        if not (seq_line2 and plus_line2 and qual_line2):
+            raise ValueError("Incomplete FASTQ record encountered in file 2.")
+
+        if not id_line2.startswith("@") or not plus_line2.startswith("+"):
+            raise ValueError("Invalid FASTQ structure (missing @ or + line) in file 2.")
+
+        read_id1 = id_line1[1:].strip()
+        seq1 = seq_line1.strip()
+        qual1 = qual_line1.strip()
+        if len(seq1) != len(qual1):
+            raise ValueError(
+                f"Length mismatch (seq {len(seq1)} vs qual {len(qual1)}) at read {read_id1} in file 1"
+            )
+
+        read_id2 = id_line2[1:].strip()
+        seq2 = seq_line2.strip()
+        qual2 = qual_line2.strip()
+        if len(seq2) != len(qual2):
+            raise ValueError(
+                f"Length mismatch (seq {len(seq2)} vs qual {len(qual2)}) at read {read_id2} in file 2"
+            )
+
+        yield read_id1, seq1, qual1, read_id2, seq2, qual2
+
+
+def get_mm_dist(seq, rate=0.05, n=2):
+    # allow 5% mismatch, at least n
+    return max(int(len(seq) * rate), n)
+
+
+def find_exact_matches(seq_str, patterns):
+    """
+    Fast exact matching using Python's built-in string.find()
+    Returns: dict with pattern_name -> [positions] mapping
+    """
+    matches = {}
+    for pattern_name, pattern_seq in patterns.items():
+        positions, start = [], 0
+        while True:
+            pos = seq_str.find(pattern_seq, start)
+            if pos == -1:
+                break
+            positions.append(pos)
+            start = pos + 1  # allow overlapping
+        matches[pattern_name] = positions
+    return matches
+
+
+def find_fuzzy_matches(seq_str, pattern, max_errors):
+    """Fallback fuzzy matching (Levenshtein) when exact matching fails."""
+    return find_near_matches(pattern, seq_str, max_l_dist=max_errors)
+
+
+class MatchResult:
+    """Container for match results"""
+    def __init__(self):
+        self.p3_matches = []
+        self.p5_matches = []
+        self.match_method = ""  # "exact", "fuzzy", "mixed", or "failed"
+
+
+def find_all_matches(seq_str, p3_seq, p5_seq, p3_mm, p5_mm):
+    """
+    Try exact matches first; fall back to fuzzy per element if needed.
+    Require exactly one hit for each element.
+    """
+    result = MatchResult()
+    patterns = {'p3': p3_seq, 'p5': p5_seq}
+    exact = find_exact_matches(seq_str, patterns)
+
+    exact_success = (len(exact['p3']) == 1 and
+                     len(exact['p5']) == 1)
+    if exact_success:
+        result.p3_matches = [type('Match', (), {'start': exact['p3'][0], 'end': exact['p3'][0] + len(p3_seq)})()]
+        result.p5_matches = [type('Match', (), {'start': exact['p5'][0], 'end': exact['p5'][0] + len(p5_seq)})()]
+        result.match_method = "exact"
+        return result
+
+    mixed_success = True
+    methods_used = []
+
+    # p3
+    if len(exact['p3']) == 1:
+        result.p3_matches = [type('Match', (), {'start': exact['p3'][0], 'end': exact['p3'][0] + len(p3_seq)})()]
+        methods_used.append('exact')
+    else:
+        result.p3_matches = find_fuzzy_matches(seq_str, p3_seq, p3_mm)
+        methods_used.append('fuzzy')
+        if len(result.p3_matches) != 1:
+            mixed_success = False
+
+    # p5
+    if mixed_success:
+        if len(exact['p5']) == 1:
+            result.p5_matches = [type('Match', (), {'start': exact['p5'][0], 'end': exact['p5'][0] + len(p5_seq)})()]
+            methods_used.append('exact')
+        else:
+            result.p5_matches = find_fuzzy_matches(seq_str, p5_seq, p5_mm)
+            methods_used.append('fuzzy')
+            if len(result.p5_matches) != 1:
+                mixed_success = False
+
+    if mixed_success:
+        result.match_method = "mixed" if 'fuzzy' in methods_used else "exact"
+    else:
+        result.match_method = "failed"
+        result.p3_matches = []
+        result.p5_matches = []
+
+    return result
+
+
+def hamming1(a, b):
+    if len(a) != len(b):
+        return False
+    diff = 0
+    for ca, cb in zip(a, b):
+        if ca != cb:
+            diff += 1
+            if diff > 1:
+                return False
+    return True
+
+
+def hamming_dist(a: str, b: str) -> int:
+    """Return Hamming distance (requires equal length)."""
+    if len(a) != len(b):
+        return max(len(a), len(b))  # treat unequal length as very large
+    return sum(c1 != c2 for c1, c2 in zip(a, b))
+
+
+def neighbors_hd1(s):
+    bases = ('A', 'C', 'G', 'T')
+    out = []
+    for i, ch in enumerate(s):
+        for b in bases:
+            if b != ch:
+                out.append(s[:i] + b + s[i+1:])
+    return out
+
+
+def collapse_directional(items):
+    """
+    items: iterable of (seq, count)
+    Rule: parent absorbs neighbor if count_parent >= 2*count_child - 1
+    """
+    counts = dict(items)
+    ordered = sorted(counts, key=lambda s: counts[s], reverse=True)
+    parent = {s: s for s in ordered}
+    index = set(ordered)
+
+    for s in ordered:
+        if parent[s] != s:  # already absorbed
+            continue
+        c_hi = counts[s]
+        for nb in neighbors_hd1(s):
+            if nb in index and parent[nb] == nb:
+                c_lo = counts[nb]
+                if c_hi >= 2*c_lo - 1:
+                    parent[nb] = s
+    return parent
+
+
+def collapse_within_hd(items, max_hd: int):
+    """
+    Like collapse_directional but allows Hamming distance <= max_hd (>=2 typical).
+    Naive O(n^2) within a group, which is OK because we operate per-UMI buckets.
+    """
+    counts = dict(items)
+    seqs = sorted(counts, key=lambda s: counts[s], reverse=True)
+    parent = {s: s for s in seqs}
+
+    for i, s in enumerate(seqs):
+        if parent[s] != s:
+            continue
+        c_hi = counts[s]
+        # only consider candidates not yet absorbed
+        for t in seqs[i+1:]:
+            if parent[t] != t:
+                continue
+            if len(t) != len(s):
+                continue
+            if hamming_dist(s, t) <= max_hd:
+                c_lo = counts[t]
+                if c_hi >= 2 * c_lo - 1:
+                    parent[t] = s
+    return parent
+
+
+def _to_df(
+    data: Union[pd.DataFrame, Sequence, "np.ndarray"],
+    bc_col: str,
+    umi_col: str,
+    count_col: Optional[str]
+) -> pd.DataFrame:
+    """Coerce various inputs to a clean DataFrame with required columns."""
+    if isinstance(data, pd.DataFrame):
+        df = data.copy()
+    else:
+        # list[dict], list[tuple], np.ndarray → DataFrame
+        df = pd.DataFrame(data)
+
+    # try to infer columns if unnamed tuples/arrays were provided
+    if bc_col not in df.columns or umi_col not in df.columns:
+        # common fallback for 2-3 column structures
+        if df.shape[1] >= 2 and bc_col not in df.columns and umi_col not in df.columns:
+            # name first three columns defensively
+            cols = list(df.columns)
+            rename_map = {}
+            if len(cols) >= 1:
+                rename_map[cols[0]] = bc_col
+            if len(cols) >= 2:
+                rename_map[cols[1]] = umi_col
+            if len(cols) >= 3 and count_col and count_col not in df.columns:
+                rename_map[cols[2]] = count_col
+            df = df.rename(columns=rename_map)
+
+    # minimal checks
+    missing = [c for c in [bc_col, umi_col] if c not in df.columns]
+    if missing:
+        raise ValueError(f"Input is missing required column(s): {missing}. "
+                         f"Available: {list(df.columns)}")
+
+    # clean up
+    for c in [bc_col, umi_col]:
+        df[c] = df[c].astype(str).str.upper()
+    df = df.dropna(subset=[bc_col, umi_col])
+
+    if count_col and count_col in df.columns:
+        df[count_col] = pd.to_numeric(df[count_col], errors="coerce").fillna(1).astype(int)
+    else:
+        df["__count__"] = 1
+        count_col = "__count__"
+
+    return df, count_col
+
+
+def correct_lineage_and_umi(
+    data: Union[pd.DataFrame, Sequence],
+    umi_col: str = "UMI",
+    bc_col: str = "lineage_bc",
+    count_col: Optional[str] = None,
+    n_iter: int = 2,
+    umi_ld: int = 2,
+    lb_hd_relative: float = 0.01,
+    logger=None,
+):
+    """
+    Accepts DataFrame, list[dict], list[tuple], or ndarray.
+    Returns:
+      agg: deduplicated (lineage_bc_corr, umi_corr, n_reads)
+      mapping: original→corrected pairs
+      stats: dict with merge counts
+    """
+    if logger is None:
+        logger = logging.getLogger(__name__)
+    
+    df, count_col = _to_df(data, bc_col=bc_col, umi_col=umi_col, count_col=count_col)
+    out = df[[bc_col, umi_col, count_col]].copy()
+    out["umi_corr"] = out[umi_col]
+    out["lineage_bc_corr"] = out[bc_col]
+
+    total_umi_merges = 0
+    total_bc_merges = 0
+
+    # umi_tools clusterer (directional strategy, distance threshold controlled by umi_ld)
+    clusterer = UMIClusterer(cluster_method="directional")
+
+    for i in range(n_iter):
+        logger.info(f"Iteration {i+1}/{n_iter}")
+        # 1) collapse lineage_bc globally by length, using length-aware Hamming threshold
+        out["__bc_len__"] = out["lineage_bc_corr"].str.len().astype(int)
+        bc_parent_total = {}
+        for blen, sub in tqdm(out.groupby(["__bc_len__"]), desc="Collapsing barcodes (length-aware HD global)", leave=True):
+            cnt = Counter(dict(sub.groupby("lineage_bc_corr")[count_col].sum()))
+            # Ensure blen is an integer (groupby key might be tuple for multi-column, but should be scalar for single column)
+            if isinstance(blen, (tuple, list)):
+                blen = int(blen[0])
+            else:
+                blen = int(blen)
+            if blen == 0:
+                continue
+            # threshold scales with length; ensure at least distance 1
+            hd_thresh_len = max(int(round(lb_hd_relative * blen)), 1)
+            parent = collapse_within_hd(cnt.items(), max_hd=hd_thresh_len)
+            bc_parent_total.update(parent)
+        before = out["lineage_bc_corr"].ne(out["lineage_bc_corr"].map(lambda b: bc_parent_total.get(b, b))).sum()
+        out["lineage_bc_corr"] = out["lineage_bc_corr"].map(lambda b: bc_parent_total.get(b, b))
+        total_bc_merges += int(before)
+
+        # 2) collapse UMIs within each lineage_bc using umi_tools (directional clustering)
+        parent_all = {}
+        for bc_val, sub in tqdm(out.groupby("lineage_bc_corr"), desc="Collapsing UMIs with umi_tools", leave=True):
+            cnt_series = sub.groupby("umi_corr")[count_col].sum()
+            if cnt_series.empty:
+                continue
+            # umi_tools expects dict[bytes, int]
+            umi_counts_bytes = {umi.encode(): int(c) for umi, c in cnt_series.items()}
+            umi_groups = clusterer(umi_counts_bytes, threshold=umi_ld)
+
+            for group in umi_groups:
+                # representative: UMI with max count within the group
+                representative_bytes = max(group, key=lambda u: umi_counts_bytes.get(u, 0))
+                representative_str = representative_bytes.decode()
+                for umi_bytes in group:
+                    umi_str = umi_bytes.decode()
+                    parent_all[umi_str] = representative_str
+
+        before = out["umi_corr"].ne(out["umi_corr"].map(lambda u: parent_all.get(u, u))).sum()
+        out["umi_corr"] = out["umi_corr"].map(lambda u: parent_all.get(u, u))
+        total_umi_merges += int(before)
+
+    agg = (out.groupby(["lineage_bc_corr", "umi_corr"], as_index=False)[count_col]
+           .sum()
+           .rename(columns={count_col: "n_reads"}))
+
+    mapping = out[[bc_col, umi_col, "lineage_bc_corr", "umi_corr"]].copy().drop_duplicates()
+
+    stats = {
+        "n_input_rows": int(len(df)),
+        "n_unique_pairs_before": int(df.groupby([bc_col, umi_col]).size().shape[0]),
+        "n_unique_pairs_after": int(agg.shape[0]),
+        "umi_merges": total_umi_merges,
+        "barcode_merges": total_bc_merges,
+    }
+    return agg, mapping, stats
+
+
+# ============================================================================
+# Main Processing Functions
+# ============================================================================
+
+def extract_lineage_barcode_and_umi_from_paired(
+    in_fq1, in_fq2, umi_len, p3_seq, p5_seq, max_reads=None, logger=None
+):
+    """
+    Extract lineage barcode and UMI from paired FASTQ (R1 + R2).
+
+    R1: UMI at 5' end. R2: P5 + lineage barcode + P3 (+ optional UMI tail); primers matched
+    on R2 as forward sequences from amplicon config.
+
+    Returns:
+        List of tuples (lineage_bc, umi)
+    """
+    if logger is None:
+        logger = logging.getLogger(__name__)
+    results = []
+    p3_mm = get_mm_dist(p3_seq)
+    p5_mm = get_mm_dist(p5_seq)
+
+    read_count = 0
+    matched_count = 0
+    with open_fastq_file(in_fq1) as fq1, open_fastq_file(in_fq2) as fq2:
+        for (_read_id1, seq1, _qual1, _read_id2, seq2, _qual2) in tqdm(
+            iter_fastq_paired(fq1, fq2),
+            desc="Processing reads",
+            unit_scale=True,
+            unit=" reads",
+        ):
+            if max_reads is not None and read_count >= max_reads:
+                break
+            read_count += 1
+            umi = seq1[:umi_len]
+            if "N" in umi:
+                continue
+            match_result = find_all_matches(seq2, p3_seq, p5_seq, p3_mm, p5_mm)
+            if len(match_result.p3_matches) == 1 and len(match_result.p5_matches) == 1:
+                matched_count += 1
+                s = match_result.p5_matches[0].end
+                e = match_result.p3_matches[0].start
+                lineage_bc = seq2[s:e]
+                results.append((lineage_bc, umi))
+
+    matched_fraction = (matched_count / read_count) if read_count else 0.0
+    logger.info(f"Matched {matched_count} reads out of {read_count} reads ({matched_fraction:.4f})")
+    return results
+
+
+def filter_reads(results_df, min_bc_len=20, reads_cutoff=1):
+    """
+    Filter reads by minimum barcode length and reads cutoff.
+    
+    Returns:
+        Filtered DataFrame
+    """
+    results_df = results_df.copy()
+    results_df['bc_len'] = results_df['lineage_bc'].str.len()
+    results_df = results_df[results_df['bc_len'] >= min_bc_len]
+    
+    # Count reads per unique RNA molecule (lineage barcode + UMI)
+    results_df = results_df.groupby(['lineage_bc', 'UMI']).size().reset_index(name="reads")
+    results_df.sort_values(by='reads', ascending=False, inplace=True)
+    
+    # Apply reads cutoff
+    results_clean = results_df[results_df['reads'] >= reads_cutoff].copy()
+    results_clean['bc_len'] = results_clean['lineage_bc'].str.len()
+    
+    return results_clean
+
+
+def concat_and_md5(row):
+    """Calculate MD5 hash of concatenated aligned_query and aligned_ref."""
+    concat_str = str(row['aligned_query']) + str(row['aligned_ref'])
+    md5_hash = hashlib.md5(concat_str.encode('utf-8')).hexdigest()
+    return md5_hash
+
+
+def perform_saturation_analysis(agg_df, sample_rates, output_dir, bc_col='lineage_bc_corr', umi_col='umi_corr', count_col='n_reads', random_seed=42, logger=None):
+    """
+    Perform saturation analysis by sampling reads at different rates on denoised data.
+    
+    Args:
+        agg_df: DataFrame with denoised data, containing corrected barcodes and UMIs
+        sample_rates: List of sampling rates (e.g., [0.01, 0.05, 0.1, ...])
+        output_dir: Directory to save the saturation analysis results
+        bc_col: Column name for lineage barcode (default: 'lineage_bc_corr')
+        umi_col: Column name for UMI (default: 'umi_corr')
+        count_col: Column name for read counts (default: 'n_reads')
+        random_seed: Random seed for reproducibility (default: 42)
+        logger: Logger instance
+    
+    Returns:
+        DataFrame with columns: sample_rates, num_barcodes, num_umis
+    """
+    if logger is None:
+        logger = logging.getLogger(__name__)
+    
+    logger.info("#### Performing saturation analysis on denoised data...")
+    
+    # Set random seed for reproducibility
+    np.random.seed(random_seed)
+    
+    # Expand reads into individual rows for sampling
+    # Create a list of (lineage_bc, UMI) tuples, repeated by read count
+    expanded_data = []
+    for _, row in tqdm(agg_df.iterrows(), total=len(agg_df), desc="Expanding reads for saturation analysis"):
+        lineage_bc = row[bc_col]
+        umi = row[umi_col]
+        reads = int(row[count_col])
+        expanded_data.extend([(lineage_bc, umi)] * reads)
+    
+    total_reads = len(expanded_data)
+    logger.info(f"Total reads for saturation analysis: {total_reads}")
+    
+    saturation_results = []
+    
+    for sample_rate in tqdm(sample_rates, desc="Sampling at different rates"):
+        if sample_rate >= 1.0:
+            # Use all reads
+            sampled_data = expanded_data
+        else:
+            # Sample without replacement
+            n_samples = int(total_reads * sample_rate)
+            if n_samples == 0:
+                n_samples = 1
+            sampled_indices = np.random.choice(total_reads, size=n_samples, replace=False)
+            sampled_data = [expanded_data[i] for i in sampled_indices]
+        
+        # Count unique barcodes and UMIs
+        sampled_df = pd.DataFrame(sampled_data, columns=['lineage_bc', 'UMI'])
+        num_barcodes = sampled_df['lineage_bc'].nunique()
+        num_umis = sampled_df['UMI'].nunique()
+        
+        saturation_results.append({
+            'sample_rates': sample_rate,
+            'num_barcodes': num_barcodes,
+            'num_umis': num_umis
+        })
+        
+        logger.info(f"  Sample rate {sample_rate:.2f}: {num_barcodes} barcodes, {num_umis} UMIs")
+    
+    saturation_df = pd.DataFrame(saturation_results)
+    
+    # Save to CSV
+    output_file = os.path.join(output_dir, 'saturation_analysis.csv')
+    saturation_df.to_csv(output_file, index=False)
+    logger.info(f"Saturation analysis results saved to: {output_file}")
+    
+    return saturation_df
+
+
+# ============================================================================
+# Diagnostic Plotting Functions
+# ============================================================================
+
+def plot_barcode_length_distribution(results_df, output_dir, title_suffix="", ylabel="Number of reads", unedited_bc_len=None):
+    """Plot distribution of lineage barcode lengths by reads."""
+    plt.figure(figsize=(4, 2))
+    plt.hist(results_df['bc_len'], bins=range(1, 300, 1), edgecolor='black')
+    if unedited_bc_len is not None:
+        plt.axvline(unedited_bc_len, color='red', linestyle='--', linewidth=.6)
+    plt.xlabel('Sequence Length')
+    plt.ylabel(ylabel)
+    plt.title(f'Distribution of DARLIN Array Sequence\nLengths By Reads{title_suffix}')
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, f'barcode_length_distribution_by_reads.png'), dpi=150)
+    plt.close()
+
+
+def plot_reads_cutoff_distribution(results_df, reads_cutoff, output_dir):
+    """Plot distribution of read counts with cutoff line."""
+    plt.figure(figsize=(4, 2))
+    plt.hist(results_df['reads'], bins=20, edgecolor=None, color='skyblue')
+    plt.xlabel('Number of Reads')
+    plt.ylabel('Frequency')
+    plt.axvline(reads_cutoff, color='red', linestyle='--', linewidth=.6)
+    plt.title('Distribution of Read Counts')
+    plt.grid(True, alpha=0.3)
+    plt.yscale('log')
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'reads_counts_distribution.png'), dpi=150)
+    plt.close()
+
+
+def plot_cutoff_vs_num_umis(results_df, reads_cutoff, output_dir):
+    """Plot reads cutoff vs number of UMIs."""
+    cutoff_values = np.arange(1, results_df['reads'].max()+1, 1)
+    num_umis = [(results_df[results_df['reads'] >= c]['UMI'].nunique()) for c in cutoff_values]
+    
+    plt.figure(figsize=(4, 2))
+    plt.plot(cutoff_values, num_umis, marker='o', markersize=2, linewidth=1)
+    plt.axvline(reads_cutoff, color='red', linestyle='--', linewidth=.6)
+    plt.xlabel('Reads Cutoff')
+    plt.ylabel('Number of UMIs')
+    plt.yscale('log')
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'UMIs_by_reads_cutoff.png'), dpi=150)
+    plt.close()
+
+
+def plot_cutoff_vs_fraction_reads_retained(results_df, reads_cutoff, output_dir):
+    """Plot reads cutoff vs fraction of reads retained."""
+    cutoff_values = np.arange(1, results_df['reads'].max()+1, 1)
+    fraction_reads_retained = [
+        results_df[results_df['reads'] >= c]['reads'].sum() / results_df['reads'].sum()
+        for c in cutoff_values
+    ]
+    
+    plt.figure(figsize=(4, 2))
+    plt.plot(cutoff_values, fraction_reads_retained, marker='o', markersize=2, linewidth=1)
+    plt.axvline(reads_cutoff, color='red', linestyle='--', linewidth=.6)
+    plt.xlabel('Reads Cutoff')
+    plt.ylabel('Frac. of Reads\nRetained')
+    plt.ylim(0, 1.05)
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'fraction_retained_reads_by_reads_cutoff.png'), dpi=150)
+    plt.close()
+
+
+def plot_barcode_length_by_umi(agg, output_dir, unedited_bc_len=276):
+    """Plot distribution of DARLIN array sequence lengths by UMI after denoising."""
+    plt.figure(figsize=(4, 2))
+    plt.hist(agg['bc_len'], bins=range(1, 300, 1), edgecolor='black')
+    plt.axvline(unedited_bc_len, color='red', linestyle='--', linewidth=.6)
+    plt.xlabel('Sequence Length')
+    plt.ylabel('Number of UMIs')
+    plt.title('Distribution of DARLIN Array Sequence\nLengths By UMI (After denoising)')
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'barcode_length_distribution_by_UMI_after_denoising.png'), dpi=150)
+    plt.close()
+
+
+def plot_clone_size_distribution(final, output_dir):
+    """Plot clone size distribution."""
+    plt.figure(figsize=(5, 2))
+    plt.hist(final[final['UMIs'] < 500]['UMIs'], bins=range(0, 501, 1), color='steelblue', edgecolor=None)
+    plt.yscale('log')
+    plt.xlabel('UMIs (clone size)')
+    plt.ylabel('Alleles (Clones)')
+    plt.title('Clone Size Distribution')
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'clone_size_distribution.png'), dpi=150)
+    plt.close()
+
+
+def plot_barcode_length_by_editing_events(final, output_dir, unedited_bc_len=276):
+    """Plot distribution of DARLIN array sequence lengths by editing events."""
+    plt.figure(figsize=(4, 2))
+    plt.hist(final['bc_len'], bins=range(1, 300, 1), edgecolor='black')
+    plt.axvline(unedited_bc_len, color='red', linestyle='--', linewidth=.6)
+    plt.xlabel('Sequence Length')
+    plt.ylabel('Number of Alleles')
+    plt.title('Distribution of DARLIN Array Sequence\nLengths By Editing Events')
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'barcode_length_distribution_by_editing_events.png'), dpi=150)
+    plt.close()
+
+
+def plot_saturation_curve(saturation_df, output_dir):
+    """
+    Plot saturation curves for barcodes and UMIs.
+    
+    Args:
+        saturation_df: DataFrame with columns: sample_rates, num_barcodes, num_umis
+        output_dir: Directory to save the plot
+    """
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 3))
+    
+    # Convert sample_rates to percentage for x-axis
+    sample_rates_pct = saturation_df['sample_rates'] * 100
+    
+    # Plot barcode saturation curve
+    ax1.plot(sample_rates_pct, saturation_df['num_barcodes'], 
+             marker='o', markersize=4, linewidth=1.5, color='steelblue')
+    ax1.set_xlabel('Sampling Rate (%)')
+    ax1.set_ylabel('Number of Unique Barcodes')
+    ax1.set_title('Barcode Saturation Curve')
+    ax1.grid(True, alpha=0.3)
+    ax1.set_xlim(0, 105)
+    
+    # Plot UMI saturation curve
+    ax2.plot(sample_rates_pct, saturation_df['num_umis'], 
+             marker='o', markersize=4, linewidth=1.5, color='coral')
+    ax2.set_xlabel('Sampling Rate (%)')
+    ax2.set_ylabel('Number of Unique UMIs')
+    ax2.set_title('UMI Saturation Curve')
+    ax2.grid(True, alpha=0.3)
+    ax2.set_xlim(0, 105)
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'saturation_curves.png'), dpi=150)
+    plt.close()
+
+
+# ============================================================================
+# Main Execution
+# ============================================================================
+
+def main():
+    """Main execution function."""
+    
+    # Parse arguments
+    args = parse_arguments()
+    
+    # Setup output directories
+    sample_output_dir = os.path.join(args.output_dir, args.sample_id)
+    log_file = os.path.join(sample_output_dir, f'{args.sample_id}.log')
+    
+    # Create output directories
+    os.makedirs(sample_output_dir, exist_ok=True)
+    
+    # Setup logging
+    log_level = getattr(logging, args.log_level.upper())
+    logger = setup_logging(log_file, log_level)
+    logger.info("--------------------------------")
+    logger.info(f"Starting bulk DNA/RNA DARLIN Array processing for sample: {args.sample_id}")
+    logger.info(f"Output directory: {sample_output_dir}")
+    logger.info(f"Arguments: {vars(args)}")
+    logger.info("--------------------------------")
+
+    # Library layout (l85 / r350): R1 carries UMI at 5'; R2 carries P5 + lineage barcode + P3
+    CONFIG_AMPLICON = load_carlin_config_by_locus(locus=args.locus)
+    UNEDITED_BC_LEN = len(CONFIG_AMPLICON.carlin_sequence)
+    P5_SEQ = CONFIG_AMPLICON.sequence.primer5
+    P3_SEQ = CONFIG_AMPLICON.sequence.secondary_sequence + CONFIG_AMPLICON.sequence.primer3
+    
+    try:
+        #########################################################
+        #### Step 1: Extract lineage barcode and UMI from paired FASTQ
+        #########################################################
+        logger.info("#### Step 1: Extracting lineage barcode and UMI from paired FASTQ...")
+        # Determine max_reads: priority: --sample-n > --test mode
+        if args.sample_n is not None:
+            max_reads = args.sample_n
+            logger.info(f"SAMPLING MODE: Processing only first {max_reads} reads")
+        elif args.test:
+            max_reads = 2500  # Test mode: 10000 lines / 4 lines per read
+            logger.info("TEST MODE: Processing only first 2500 reads (10000 lines)")
+        else:
+            max_reads = None
+        results = extract_lineage_barcode_and_umi_from_paired(
+            args.fq1,
+            args.fq2,
+            args.umi_len,
+            P3_SEQ,
+            P5_SEQ,
+            max_reads=max_reads,
+            logger=logger,
+        )
+        logger.info(f"Valid reads: {len(results)}")
+        
+        # Build base dataframe and pre-filter; this part is shared across all parameter combinations
+        results_df = pd.DataFrame(results, columns=['lineage_bc', 'UMI'])
+        results_df['bc_len'] = results_df['lineage_bc'].str.len()
+        
+        # Filter by minimum barcode length
+        results_df = results_df[results_df['bc_len'] >= args.min_bc_len]
+        
+        # Count reads per unique RNA molecule (lineage barcode + UMI)
+        results_df = results_df.groupby(['lineage_bc', 'UMI']).size().reset_index(name="reads")
+        results_df['bc_len'] = results_df['lineage_bc'].str.len()  # Re-add bc_len after groupby
+        results_df.sort_values(by='reads', ascending=False, inplace=True)
+        
+        # Apply reads cutoff
+        results_clean = results_df[results_df['reads'] >= args.reads_cutoff].copy()
+        results_clean['bc_len'] = results_clean['lineage_bc'].str.len()
+        
+        logger.info(f"Rows after filtering: {len(results_clean)}")
+        logger.info(f"Proportion of valid reads: {results_clean['reads'].sum() / results_df['reads'].sum():.4f}")
+
+        # Basic sanity check: lists must be non-empty
+        if not args.umi_ld or not args.lb_hd_relative:
+            logger.error("umi_ld and lb_hd_relative must both be non-empty lists.")
+            sys.exit(1)
+
+        # Loop over full Cartesian product of (umi_ld, lb_hd_relative)
+        for umi_ld in args.umi_ld:
+            for lb_rel in args.lb_hd_relative:
+                combo_tag = f"reads_{args.reads_cutoff}_u_{umi_ld}_l_{lb_rel}"
+                combo_output_dir = os.path.join(sample_output_dir, combo_tag)
+                os.makedirs(combo_output_dir, exist_ok=True)
+                logger.info(
+                    f"Running denoising/annotation with umi_ld={umi_ld}, "
+                    f"lb_hd_relative={lb_rel} -> output dir: {combo_output_dir}"
+                )
+
+                #########################################################
+                #### Diagnostic plots (pre-denoising, per-parameter set)
+                #########################################################
+                logger.info("Generating diagnostic plots (pre-denoising)...")
+                plot_barcode_length_distribution(
+                    results_df, combo_output_dir, title_suffix="", unedited_bc_len=UNEDITED_BC_LEN
+                )
+                plot_reads_cutoff_distribution(results_df, args.reads_cutoff, combo_output_dir)
+                plot_cutoff_vs_num_umis(results_df, args.reads_cutoff, combo_output_dir)
+                plot_cutoff_vs_fraction_reads_retained(results_df, args.reads_cutoff, combo_output_dir)
+
+                #########################################################
+                #### Step 2: Denoise lineage barcode and UMI
+                #########################################################
+                logger.info("#### Step 2: Denoising lineage barcode and UMI...")
+                agg, mapping, stats = correct_lineage_and_umi(
+                    results_clean,
+                    umi_col="UMI",
+                    bc_col="lineage_bc",
+                    n_iter=args.denoise_iter,
+                    umi_ld=umi_ld,
+                    lb_hd_relative=lb_rel,
+                    logger=logger,
+                )
+                logger.info(f"Denoising stats (umi_ld={umi_ld}, lb_hd_relative={lb_rel}): {stats}")
+                
+                agg['bc_len'] = agg['lineage_bc_corr'].str.len()
+                agg.sort_values(by='n_reads', ascending=False, inplace=True)
+                
+                # Diagnostic plot 5: Distribution of lineage barcode lengths (after denoising)
+                plot_barcode_length_by_umi(agg, combo_output_dir, unedited_bc_len=UNEDITED_BC_LEN)
+                
+                agg2 = agg.groupby('lineage_bc_corr').size().reset_index(name="UMIs")
+                agg2.sort_values(by='UMIs', ascending=False, inplace=True)
+                agg2['bc_len'] = agg2['lineage_bc_corr'].str.len()
+                logger.info(f"Unique lineage barcodes (umi_ld={umi_ld}, lb_hd_relative={lb_rel}): {len(agg2)}")
+                
+                #########################################################
+                #### Saturation Analysis (on denoised data)
+                #########################################################
+                if args.saturation_analysis:
+                    sample_rates = [0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 1.0]
+                    saturation_df = perform_saturation_analysis(
+                        agg, sample_rates, combo_output_dir, 
+                        bc_col='lineage_bc_corr', umi_col='umi_corr', count_col='n_reads',
+                        logger=logger
+                    )
+                    
+                    # Plot saturation curves
+                    logger.info("Plotting saturation curves...")
+                    plot_saturation_curve(saturation_df, combo_output_dir)
+                else:
+                    logger.info("Skipping saturation analysis (--saturation-analysis not provided)")
+                
+                #########################################################
+                #### Step 3: Annotate alleles
+                #########################################################
+                logger.info("#### Step 3: Annotating alleles...")
+                sequences = agg2['lineage_bc_corr'].tolist()
+                agg2['query'] = sequences
+                
+                results_allele = analyze_sequences(
+                    sequences, config=args.locus,
+                    min_sequence_length=args.min_bc_len, verbose=False
+                )
+                results_allele = results_allele.to_df()
+
+                #########################################################
+                #### Step 4: Merge and process final results
+                #########################################################
+                logger.info("#### Step 4: Processing final results...")
+                final = agg2.merge(results_allele, on='query', how='left')
+                final = final[['query', 'bc_len', 'UMIs', 'mutations', 'confidence', 'aligned_query', 'aligned_ref']]
+                
+                # Calculate MD5
+                final['md5'] = final.apply(concat_and_md5, axis=1)
+                
+                # Group by MD5
+                final2 = final.drop('query', axis=1).groupby('md5', as_index=False).agg({
+                    'bc_len': 'first',
+                    'UMIs': 'sum',
+                    'mutations': 'first',
+                    'confidence': 'first',
+                    'aligned_query': 'first',
+                    'aligned_ref': 'first'
+                }).sort_values(by='UMIs', ascending=False).reset_index(drop=True)
+                
+                # Diagnostic plot 7: Clone size distribution
+                plot_clone_size_distribution(final, combo_output_dir)
+                
+                # Diagnostic plot 8: Distribution of lineage barcode lengths by editing events
+                plot_barcode_length_by_editing_events(final, combo_output_dir, unedited_bc_len=UNEDITED_BC_LEN)
+                
+                # Save output for this parameter combination
+                output_file = os.path.join(combo_output_dir, f'{args.sample_id}_alleles.csv')
+                final2.to_csv(output_file, index=False)
+                logger.info(f"[{combo_tag}] Results saved to: {output_file}")
+                logger.info(f"[{combo_tag}] Total unique alleles: {len(final2)}")
+                logger.info(f"[{combo_tag}] Diagnostic plots saved to: {combo_output_dir}")
+        
+        logger.info("Processing completed successfully!\n\n")
+        
+    except Exception as e:
+        logger.error(f"Error during processing: {str(e)}", exc_info=True)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
