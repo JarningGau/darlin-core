@@ -3,57 +3,38 @@
 DARLIN Python - CARLIN sequence analysis toolkit
 """
 
-import sys
+from pathlib import Path
 
-from setuptools import setup, find_packages
+from pybind11.setup_helpers import Pybind11Extension, build_ext
+from setuptools import find_packages, setup
 
-ext_modules = []
-cmdclass = {}
 
-try:
-    from pybind11.setup_helpers import Pybind11Extension, build_ext
+ROOT = Path(__file__).resolve().parent
 
-    ext_modules.append(
-        Pybind11Extension(
-            "darlinpy.alignment._cas9_align",
-            ["darlinpy/alignment/_cas9_align.cpp"],
-            cxx_std=17,
-        )
-    )
-    cmdclass["build_ext"] = build_ext
-except ImportError:
-    print(
-        "pybind11 is not installed; building without C++ cas9_align extension.",
-        file=sys.stderr,
-    )
 
-def get_version():
-    with open("darlinpy/__init__.py", "r") as f:
-        for line in f:
-            if line.startswith("__version__"):
-                return line.split("=")[1].strip().strip('"').strip("'")
-    return None
+def get_version() -> str:
+    init_py = ROOT / "darlinpy" / "__init__.py"
+    for line in init_py.read_text(encoding="utf-8").splitlines():
+        if line.startswith("__version__"):
+            return line.split("=", 1)[1].strip().strip('"').strip("'")
+    raise RuntimeError("Unable to determine darlinpy version from darlinpy/__init__.py")
 
-def get_long_description():
-    try:
-        with open("README.md", "r", encoding="utf-8") as f:
-            return f.read()
-    except FileNotFoundError:
-        return "DARLIN Python - Python implementation of CARLIN sequence analysis tools"
+
+def get_long_description() -> str:
+    return (ROOT / "README.md").read_text(encoding="utf-8")
+
 
 setup(
-    name="darlinpy", 
+    name="darlinpy",
     version=get_version(),
-    author="DARLIN-toolkits Team",
-    author_email="",
     description="Python implementation of CARLIN sequence analysis tools",
     long_description=get_long_description(),
     long_description_content_type="text/markdown",
     url="https://github.com/jarninggau/darlinpy",
-    packages=find_packages(),
+    packages=find_packages(include=["darlinpy", "darlinpy.*"]),
     classifiers=[
         "Development Status :: 3 - Alpha",
-        "Intended Audience :: Science/Research", 
+        "Intended Audience :: Science/Research",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.8",
@@ -65,13 +46,8 @@ setup(
     python_requires=">=3.8",
     install_requires=[
         "numpy>=1.20.0",
-        "scipy>=1.7.0", 
-        "biopython>=1.79",
+        "scipy>=1.7.0",
         "pandas>=1.3.0",
-        "fuzzysearch>=0.7.0",
-        "tqdm>=4.60.0",
-        "numba>=0.56.0",
-        "pybind11>=2.10",
     ],
     extras_require={
         "dev": [
@@ -80,6 +56,7 @@ setup(
             "black>=21.0",
             "isort>=5.0",
             "mypy>=0.900",
+            "pybind11>=2.10",
         ],
         "viz": [
             "matplotlib>=3.5.0",
@@ -93,6 +70,12 @@ setup(
     package_data={
         "darlinpy.config": ["data/*.json"],
     },
-    ext_modules=ext_modules,
-    cmdclass=cmdclass,
+    ext_modules=[
+        Pybind11Extension(
+            "darlinpy.alignment._cas9_align",
+            ["darlinpy/alignment/_cas9_align.cpp"],
+            cxx_std=17,
+        )
+    ],
+    cmdclass={"build_ext": build_ext},
 )

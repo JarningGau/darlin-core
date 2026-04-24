@@ -1,15 +1,13 @@
 import numpy as np
 from typing import Tuple, List
 from enum import IntEnum
-import warnings
 
 try:
     from . import _cas9_align as _cas9_align_module
-except ImportError:  # pragma: no cover - optional acceleration
+except ImportError:  # pragma: no cover - requires build-time extension
     _cas9_align_module = None
 
 HAS_CPP_IMPL = _cas9_align_module is not None
-_WARNED_ABOUT_PYTHON_FALLBACK = False
 
 
 class Mutation(IntEnum):
@@ -199,22 +197,16 @@ def cas9_align_py(seq: np.ndarray, ref: np.ndarray,
 def cas9_align(seq: np.ndarray, ref: np.ndarray,
                open_penalty: np.ndarray, close_penalty: np.ndarray,
                sub_score: np.ndarray) -> Tuple[float, List[int], List[int]]:
-    """Dispatch to the fastest available cas9 alignment implementation."""
+    """Run the required compiled cas9 alignment implementation."""
 
-    if HAS_CPP_IMPL:
-        return _cas9_align_module.cas9_align(seq, ref, open_penalty, close_penalty, sub_score)
-
-    global _WARNED_ABOUT_PYTHON_FALLBACK
-    if not _WARNED_ABOUT_PYTHON_FALLBACK:
-        warnings.warn(
-            "darlinpy.alignment.cas9_align is using the Python fallback because "
-            "the optional C++ extension is not available. Performance may be much slower.",
-            RuntimeWarning,
-            stacklevel=2,
+    if not HAS_CPP_IMPL:
+        raise RuntimeError(
+            "darlinpy requires the compiled C++ extension "
+            "'darlinpy.alignment._cas9_align'. Reinstall the package with "
+            "build dependencies available so the extension can be compiled."
         )
-        _WARNED_ABOUT_PYTHON_FALLBACK = True
 
-    return cas9_align_py(seq, ref, open_penalty, close_penalty, sub_score)
+    return _cas9_align_module.cas9_align(seq, ref, open_penalty, close_penalty, sub_score)
 
 def nt2int(sequence: str) -> np.ndarray:
     """Convert DNA sequence to integer encoding"""

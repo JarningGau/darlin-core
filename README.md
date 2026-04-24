@@ -17,7 +17,7 @@ This repository is based on https://gitlab.com/hormozlab/carlin and https://gith
 ### Installation
 
 ```bash
-# Install from GitHub (recommended)
+# Install from source
 git clone https://github.com/jarninggau/darlinpy.git
 cd darlinpy
 pip install -e .
@@ -25,10 +25,13 @@ pip install -e .
 # Or install with development dependencies
 pip install -e ".[dev]"
 
+# Build requirements, including pybind11, are installed automatically via pyproject.toml.
+# A successful installation should provide the compiled C++ aligner.
+
 # Verify installation
 python -c "import darlinpy; print(f'DARLIN Python v{darlinpy.__version__} installed successfully!')"
 
-# verify that the C++ path is active
+# Verify that the compiled C++ path is active
 python -c "import importlib; m = importlib.import_module('darlinpy.alignment.cas9_align'); print(m.HAS_CPP_IMPL)"
 ```
 

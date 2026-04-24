@@ -1,2 +1,9 @@
+include README.md
+include LICENSE
+include pyproject.toml
+recursive-include darlinpy/alignment *.cpp
 recursive-include darlinpy/config/data *.json
-
+prune tests
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude *.so
