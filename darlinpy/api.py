@@ -146,7 +146,6 @@ def analyze_sequences(
     sequences: List[str],
     config: Union[str, AmpliconConfig] = 'Col1a1',  # Changed to default Col1a1
     method: str = 'coarse_grain',
-    min_reads: int = 1,
     dominant_threshold: float = 0.5,
     annotate_mutations_flag: bool = True,
     merge_adjacent_mutations: bool = True,
@@ -160,7 +159,6 @@ def analyze_sequences(
         sequences: List of sequences to analyze
         config: Configuration, can be locus name string or AmpliconConfig object, defaults to 'Col1a1', options: "Col1a1", "Rosa", "Tigre"
         method: Calling method ('exact' or 'coarse_grain')
-        min_reads: Minimum number of reads
         dominant_threshold: Dominant allele threshold
         annotate_mutations_flag: Whether to annotate mutations
         merge_adjacent_mutations: Whether to merge adjacent mutations

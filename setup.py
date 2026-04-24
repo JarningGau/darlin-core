@@ -70,6 +70,8 @@ setup(
         "pandas>=1.3.0",
         "fuzzysearch>=0.7.0",
         "tqdm>=4.60.0",
+        "numba>=0.56.0",
+        "pybind11>=2.10",
     ],
     extras_require={
         "dev": [
@@ -82,10 +84,6 @@ setup(
         "viz": [
             "matplotlib>=3.5.0",
             "seaborn>=0.11.0",
-        ],
-        "fast": [
-            "numba>=0.56.0",
-            "pybind11>=2.10",
         ],
     },
     include_package_data=True,
