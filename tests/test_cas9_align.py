@@ -7,6 +7,8 @@ import numpy as np
 import pytest
 import sys
 import os
+import importlib
+import warnings
 
 # 添加路径以便导入模块
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -19,6 +21,8 @@ from darlinpy.alignment.cas9_align import (
     print_cas9_alignment,
     HAS_CPP_IMPL,
 )
+
+cas9_align_module = importlib.import_module("darlinpy.alignment.cas9_align")
 
 
 class TestCAS9Align:
@@ -191,6 +195,27 @@ class TestCAS9Align:
         assert score_cpp == pytest.approx(score_py)
         assert al_seq_cpp == al_seq_py
         assert al_ref_cpp == al_ref_py
+
+    def test_python_fallback_warns_once(self, monkeypatch):
+        """Python fallback should emit a warning only once per process."""
+        seq = nt2int("ACGT")
+        ref = nt2int("ACGT")
+        open_penalty = np.full(len(ref) + 1, 10.0)
+        close_penalty = np.full(len(ref) + 1, 5.0)
+
+        monkeypatch.setattr(cas9_align_module, "HAS_CPP_IMPL", False)
+        monkeypatch.setattr(cas9_align_module, "_cas9_align_module", None)
+        monkeypatch.setattr(cas9_align_module, "_WARNED_ABOUT_PYTHON_FALLBACK", False, raising=False)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            cas9_align(seq, ref, open_penalty, close_penalty, self.sub_score)
+            cas9_align(seq, ref, open_penalty, close_penalty, self.sub_score)
+
+        fallback_warnings = [
+            w for w in caught if "Python fallback" in str(w.message)
+        ]
+        assert len(fallback_warnings) == 1
 
 
 def test_print_function():

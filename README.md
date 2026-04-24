@@ -1,6 +1,6 @@
 # DARLIN Python
 
-**Version:** 0.1.10
+**Version:** 0.1.11
 
 This repository is based on https://gitlab.com/hormozlab/carlin and https://github.com/ShouWenWang-Lab/Custom_CARLIN. The original CARLIN pipeline is implemented in MATLAB. Here, we provide a Python implementation of CARLIN sequence analysis tools for CRISPR-Cas9 lineage tracing. This repository is only focus on DARLIN sequence alignment and mutation calling.
 
@@ -28,6 +28,30 @@ pip install -e ".[dev]"
 # Verify installation
 python -c "import darlinpy; print(f'DARLIN Python v{darlinpy.__version__} installed successfully!')"
 ```
+
+### Enable C++ Alignment Acceleration
+
+`analyze_sequences()` is much faster when the optional `pybind11` extension
+`darlinpy.alignment._cas9_align` is available. If you are working in a local
+`venv`, build it in place after installing dependencies:
+
+```bash
+# from the repo root, inside your virtualenv
+pip install -e ".[fast]"
+python setup.py build_ext --inplace
+
+# verify that the C++ path is active
+python -c "import importlib; m = importlib.import_module('darlinpy.alignment.cas9_align'); print(m.HAS_CPP_IMPL)"
+```
+
+Expected verification output:
+
+```text
+True
+```
+
+If the verification prints `False`, darlinpy will fall back to the pure Python
+alignment path, which is much slower on batch inputs.
 
 ### Basic Usage
 
