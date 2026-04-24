@@ -11,7 +11,7 @@ Main features:
 Author: Jarning Gau
 """
 
-__version__ = "0.1.11"
+__version__ = "0.1.12"
 __author__ = "Jarning Gau"
 
 # Export main API interfaces
