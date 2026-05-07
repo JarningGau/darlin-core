@@ -231,25 +231,46 @@ class MutationIdentifier:
             ref_nogap = ref_clean
             seq_nogap = seq_clean
         elif ('-' in ref) and ('-' not in seq):
-            # Insertion: at positions where reference has gaps, query sequence provides inserted bases
-            mutation_type = MutationType.INSERTION
-            # Find exact inserted fragment and insertion position (between reference bases before and after gap)
-            inserted_bases = []
-            ref_bases_before_gap = 0
-            seen_gap = False
-            for i in range(len(ref)):
-                if ref[i] == '-':
-                    inserted_bases.append(seq[i])
-                    seen_gap = True
-                else:
-                    if not seen_gap:
-                        ref_bases_before_gap += 1
-            # Insertion occurs between the reference base before the first gap and the reference base after it
-            insertion_after = start_pos + max(ref_bases_before_gap - 1, 0)
-            loc_start = insertion_after
-            loc_end = insertion_after  # Insertion uses start==end representation
-            ref_nogap = ''
-            seq_nogap = ''.join(inserted_bases)
+            # Reference gaps with no query gaps are usually pure insertions, but if
+            # aligned non-gap positions also mismatch then this is a delins/complex
+            # event and we need to preserve the replaced reference bases too.
+            has_aligned_mismatch = any(
+                ref[i] != '-'
+                and seq[i] != '-'
+                and ref[i] != seq[i]
+                for i in range(len(ref))
+            )
+
+            if has_aligned_mismatch:
+                mutation_type = (
+                    MutationType.COMPLEX
+                    if abs(len(seq_clean) - len(ref_clean)) > 3
+                    else MutationType.INDEL
+                )
+                loc_start = start_pos
+                loc_end = start_pos + len(ref_clean) - 1
+                ref_nogap = ref_clean
+                seq_nogap = seq_clean
+            else:
+                # Insertion: at positions where reference has gaps, query sequence provides inserted bases
+                mutation_type = MutationType.INSERTION
+                # Find exact inserted fragment and insertion position (between reference bases before and after gap)
+                inserted_bases = []
+                ref_bases_before_gap = 0
+                seen_gap = False
+                for i in range(len(ref)):
+                    if ref[i] == '-':
+                        inserted_bases.append(seq[i])
+                        seen_gap = True
+                    else:
+                        if not seen_gap:
+                            ref_bases_before_gap += 1
+                # Insertion occurs between the reference base before the first gap and the reference base after it
+                insertion_after = start_pos + max(ref_bases_before_gap - 1, 0)
+                loc_start = insertion_after
+                loc_end = insertion_after  # Insertion uses start==end representation
+                ref_nogap = ''
+                seq_nogap = ''.join(inserted_bases)
         elif ('-' in seq) and ('-' not in ref):
             # Deletion or delins: query has gaps at reference base positions
             # Find continuous mutation region: deletions and/or adjacent substitutions
