@@ -100,15 +100,11 @@ class AnalysisResult:
                 - aligned_ref: Aligned reference sequences
                 - scores: Alignment scores
                 - mutations: Comma-separated list of mutations in HGVS format
-                - confidence: Comma-separated list of mutation confidence labels
         """
         mutations = []
-        confidence = []
         for mut in self.mutations:
             _mut = ','.join([m.to_hgvs() for m in mut]) if len(mut) > 0 else []
-            _conf = ','.join([m.confidence_label for m in mut]) if len(mut) > 0 else []
             mutations.append(_mut)
-            confidence.append(_conf)
         
         results_df = pd.DataFrame({
             'query': self.valid_sequences,
@@ -116,8 +112,7 @@ class AnalysisResult:
             'aligned_query': self.aligned_query, 
             'aligned_ref': self.aligned_reference,
             'scores': self.alignment_scores, 
-            'mutations': mutations, 
-            'confidence': confidence
+            'mutations': mutations,
         })
         return results_df
     

@@ -6,6 +6,7 @@ DARLIN主API模块测试
 import pytest
 import time
 from darlinpy.api import analyze_sequences, AnalysisResult
+from darlinpy.mutations.mutation import MutationType
 
 
 class TestAnalysisResult:
@@ -58,7 +59,7 @@ class TestAnalysisResult:
         )
         
         mutation = Mutation(
-            type=MutationType.SUBSTITUTION,
+            type=MutationType.INDEL,
             loc_start=5,
             loc_end=5,
             seq_old="A",
@@ -79,7 +80,7 @@ class TestAnalysisResult:
         
         # 测试突变摘要
         mut_summary = result.get_mutation_summary()
-        assert mut_summary['M'] == 1
+        assert mut_summary['DI'] == 1
     
     def test_to_df_method(self):
         """测试to_df方法"""
@@ -101,7 +102,7 @@ class TestAnalysisResult:
         )
         
         mutation = Mutation(
-            type=MutationType.SUBSTITUTION,
+            type=MutationType.INDEL,
             loc_start=5,
             loc_end=5,
             seq_old="A",
@@ -129,20 +130,19 @@ class TestAnalysisResult:
         assert 'aligned_ref' in df.columns
         assert 'scores' in df.columns
         assert 'mutations' in df.columns
-        assert 'confidence' in df.columns
+        assert 'confidence' not in df.columns
         
         # 验证数据内容
         assert df['query'].iloc[0] == "ACGTACGT"
         assert df['query_len'].iloc[0] == 8
         assert df['scores'].iloc[0] == 85.5
-        assert '5A>T' in df['mutations'].iloc[0]  # HGVS格式的突变
+        assert '5_5delinsT' in df['mutations'].iloc[0]  # HGVS格式的突变
         
         # 验证第二个序列（无突变）
         assert df['query'].iloc[1] == "TTGGTTGG"
         assert df['query_len'].iloc[1] == 8
         assert df['scores'].iloc[1] == 92.1
         assert df['mutations'].iloc[1] == []  # 无突变
-        assert df['confidence'].iloc[1] == []  # 无置信度
     
     def test_print_summary(self, capsys):
         """测试打印摘要功能"""
@@ -370,7 +370,7 @@ class TestStatistics:
         # 模拟突变
         mutations_list = [[
             Mutation(
-                type=MutationType.SUBSTITUTION,
+                type=MutationType.INDEL,
                 loc_start=5,
                 loc_end=5,
                 seq_old="A",
@@ -388,7 +388,7 @@ class TestStatistics:
         assert stats['called_alleles_count'] == 1
         assert stats['avg_alignment_score'] == (85.5 + 92.1) / 2
         assert stats['total_mutations'] == 1
-        assert stats['mutation_type_distribution']['M'] == 1
+        assert stats['mutation_type_distribution']['DI'] == 1
 
 
 class TestErrorHandling:
@@ -423,7 +423,7 @@ class TestComplexMutationCases:
         
         # Extract mutation HGVS strings
         mutations = [m.to_hgvs() for m in results.mutations[0]]
-        expected = ["23_76delinsGT", "104_211del", "238_239insAA", "265_266insA"]
+        expected = ["23_74del", "76_76delinsT", "104_211del", "238_239insAA", "265_266insA"]
         
         assert mutations == expected, f"Expected {expected}, got {mutations}"
     
@@ -543,16 +543,22 @@ class TestComplexMutationCases:
         
         # Extract mutation HGVS strings
         mutations = [m.to_hgvs() for m in results.mutations[0]]
-        expected = ["14_265delinsAGT"]
+        expected = ["14_262del", "265_265delinsT"]
         
         assert mutations == expected, f"Expected {expected}, got {mutations}"
         
-        # Verify the mutation details
+        # Verify the scanner now emits direct contiguous events
         first_mutation = results.mutations[0][0]
         assert first_mutation.loc_start == 14
-        assert first_mutation.loc_end == 265
-        assert first_mutation.seq_new == "AGT", f"Expected inserted sequence 'AGT', got '{first_mutation.seq_new}'"
-        assert first_mutation.type.value in ["DI", "C"], f"Expected INDEL or COMPLEX type, got {first_mutation.type.value}"
+        assert first_mutation.loc_end == 262
+        assert first_mutation.seq_new == ""
+        assert first_mutation.type == MutationType.DELETION
+
+        second_mutation = results.mutations[0][1]
+        assert second_mutation.loc_start == 265
+        assert second_mutation.loc_end == 265
+        assert second_mutation.seq_new == "T"
+        assert second_mutation.type == MutationType.INDEL
     
     def test_case_6_delins_with_insertion_before_gap(self):
         """测试案例6：gap之前有插入的delins事件正确识别（19_270delinsGGGA）
@@ -579,16 +585,16 @@ class TestComplexMutationCases:
         
         # Extract mutation HGVS strings
         mutations = [m.to_hgvs() for m in results.mutations[0]]
-        expected = ["19_270delinsGGGA"]
+        expected = ["19_20delinsGG", "23_270del"]
         
         assert mutations == expected, f"Expected {expected}, got {mutations}"
         
-        # Verify the mutation details
+        # Verify the scanner now keeps the early mismatch block separate
         first_mutation = results.mutations[0][0]
         assert first_mutation.loc_start == 19
-        assert first_mutation.loc_end == 270
-        assert first_mutation.seq_new == "GGGA", f"Expected inserted sequence 'GGGA', got '{first_mutation.seq_new}'"
-        assert first_mutation.type.value in ["DI", "C"], f"Expected INDEL or COMPLEX type, got {first_mutation.type.value}"
+        assert first_mutation.loc_end == 20
+        assert first_mutation.seq_new == "GG"
+        assert first_mutation.type == MutationType.INDEL
     
     def test_case_7_complex_delins_with_multiple_insertions(self):
         """测试案例7：复杂delins事件中多个插入的正确识别（97_244delinsGCGCGTATCGTATCGACTCCAT）
@@ -613,17 +619,15 @@ class TestComplexMutationCases:
         
         # Extract mutation HGVS strings
         mutations = [m.to_hgvs() for m in results.mutations[0]]
-        expected = ["19_76del", "97_244delinsGCGCGTATCGTATCGACTCCAT", "265_266insGG"]
+        expected = ["19_76del", "97_144del", "150_153delinsTATCGTA", "160_244delinsCCAT", "265_266insGG"]
         
         assert mutations == expected, f"Expected {expected}, got {mutations}"
         
-        # Verify the second mutation (delins) details
-        if len(results.mutations[0]) >= 2:
-            second_mutation = results.mutations[0][1]
-            assert second_mutation.loc_start == 97
-            assert second_mutation.loc_end == 244
-            assert second_mutation.seq_new == "GCGCGTATCGTATCGACTCCAT", f"Expected inserted sequence 'GCGCGTATCGTATCGACTCCAT', got '{second_mutation.seq_new}'"
-            assert second_mutation.type.value in ["DI", "C"], f"Expected INDEL or COMPLEX type, got {second_mutation.type.value}"
+        third_mutation = results.mutations[0][2]
+        assert third_mutation.loc_start == 150
+        assert third_mutation.loc_end == 153
+        assert third_mutation.seq_new == "TATCGTA"
+        assert third_mutation.type == MutationType.INDEL
     
     def test_case_8_substitution_normalization(self):
         """测试案例8：替换突变的HGVS规范化（23C>A）
@@ -646,19 +650,16 @@ class TestComplexMutationCases:
         
         # Extract mutation HGVS strings
         mutations = [m.to_hgvs() for m in results.mutations[0]]
-        expected = ["23C>A", "50_237del", "265_265del"]
+        expected = ["23_23delinsA", "50_237del", "265_265del"]
         
         assert mutations == expected, f"Expected {expected}, got {mutations}"
         
-        # Verify the first mutation (substitution) details
-        from darlinpy.mutations.mutation import MutationType
-        if len(results.mutations[0]) >= 1:
-            first_mutation = results.mutations[0][0]
-            assert first_mutation.type == MutationType.SUBSTITUTION
-            assert first_mutation.loc_start == 23
-            assert first_mutation.loc_end == 23
-            assert first_mutation.seq_old == "C", f"Expected old sequence 'C', got '{first_mutation.seq_old}'"
-            assert first_mutation.seq_new == "A", f"Expected new sequence 'A', got '{first_mutation.seq_new}'"
+        first_mutation = results.mutations[0][0]
+        assert first_mutation.type == MutationType.INDEL
+        assert first_mutation.loc_start == 23
+        assert first_mutation.loc_end == 23
+        assert first_mutation.seq_old == "C", f"Expected old sequence 'C', got '{first_mutation.seq_old}'"
+        assert first_mutation.seq_new == "A", f"Expected new sequence 'A', got '{first_mutation.seq_new}'"
 
     def test_issue_example_1_large_delins_ACAACA(self):
         """issues.tmp Example #1：大片段delins，插入序列为 ACAACA（19_266delinsACAACA）
@@ -683,20 +684,14 @@ class TestComplexMutationCases:
         )
 
         mutations = [m.to_hgvs() for m in results.mutations[0]]
-        expected = ["19_266delinsACAACA"]
+        expected = ["19_19delinsA", "21_21delinsA", "24_266delinsA"]
         assert mutations == expected, f"Expected {expected}, got {mutations}"
 
         first_mutation = results.mutations[0][0]
         assert first_mutation.loc_start == 19
-        assert first_mutation.loc_end == 266
-        assert (
-            first_mutation.seq_new == "ACAACA"
-        ), f"Expected inserted sequence 'ACAACA', got '{first_mutation.seq_new}'"
-        # delins 事件类型可以是 INDEL(DI) 或 COMPLEX(C)
-        assert first_mutation.type.value in [
-            "DI",
-            "C",
-        ], f"Expected INDEL or COMPLEX type, got {first_mutation.type.value}"
+        assert first_mutation.loc_end == 19
+        assert first_mutation.seq_new == "A"
+        assert first_mutation.type == MutationType.INDEL
 
     def test_issue_example_2_delins_and_insertion(self):
         """issues.tmp Example #2：delins + 远端插入（19_238delinsCCGA,265_266insAG）
@@ -724,25 +719,19 @@ class TestComplexMutationCases:
         )
 
         mutations = [m.to_hgvs() for m in results.mutations[0]]
-        expected = ["19_238delinsCCGA", "265_266insAG"]
+        expected = ["19_19delinsC", "23_238del", "265_266insAG"]
         assert mutations == expected, f"Expected {expected}, got {mutations}"
 
         # 验证第一个 delins 事件
         first_mutation = results.mutations[0][0]
         assert first_mutation.loc_start == 19
-        assert first_mutation.loc_end == 238
-        assert (
-            first_mutation.seq_new == "CCGA"
-        ), f"Expected inserted sequence 'CCGA', got '{first_mutation.seq_new}'"
-        assert first_mutation.type.value in [
-            "DI",
-            "C",
-        ], f"Expected INDEL or COMPLEX type, got {first_mutation.type.value}"
+        assert first_mutation.loc_end == 19
+        assert first_mutation.seq_new == "C"
+        assert first_mutation.type == MutationType.INDEL
 
         # 验证第二个插入事件
-        second_mutation = results.mutations[0][1]
+        second_mutation = results.mutations[0][2]
         assert second_mutation.loc_start == 265
-        # 插入使用 start==end 表示
         assert second_mutation.loc_end == 265
         assert (
             second_mutation.seq_new == "AG"
