@@ -62,6 +62,8 @@ This means all mismatch-only regions become `delins`. There is no separate subst
 
 Mutation coordinates remain 1-based and reference-oriented.
 
+- aligned reference gaps (`-`) do not consume reference coordinates
+- only non-gap reference bases advance the reference position counter
 - `loc_start` is the first affected reference base position
 - `loc_end` is the last affected reference base position
 
@@ -71,6 +73,13 @@ For insertions:
 
 - keep the existing internal convention that insertions use `loc_start == loc_end`
 - keep the current HGVS rendering style of `N_(N+1)insSEQ`
+
+During scanning, each alignment column should be interpreted as follows:
+
+- if `ref[i] != '-'`, that column maps to one real reference base and advances the reference coordinate
+- if `ref[i] == '-'`, that column represents sequence inserted relative to the reference and does not advance the reference coordinate
+
+For pure insertions, an event block may contain no reference bases internally. In that case, the insertion must be anchored between the previous and next non-gap reference bases, and the inserted columns still do not receive their own coordinates.
 
 No additional proximity-based normalization or post hoc event merging should be applied.
 
