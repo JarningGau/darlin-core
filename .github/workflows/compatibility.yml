@@ -1,0 +1,40 @@
+name: compatibility
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  compatibility:
+    name: ${{ matrix.toxenv }}
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python-version: "3.8"
+            toxenv: py38-min
+            experimental: false
+          - python-version: "3.9"
+            toxenv: py39-max
+            experimental: false
+          - python-version: "3.11"
+            toxenv: py311-min
+            experimental: false
+          - python-version: "3.11"
+            toxenv: py311-max
+            experimental: false
+          - python-version: "3.12"
+            toxenv: py312-max
+            experimental: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install tox
+        run: python -m pip install --upgrade pip tox
+      - name: Run compatibility environment
+        run: tox -e ${{ matrix.toxenv }}
