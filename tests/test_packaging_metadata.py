@@ -27,3 +27,23 @@ def test_pixi_quality_config_exists():
     assert 'quality' in pixi
     assert 'ruff check darlinpy/__init__.py darlinpy/api.py darlinpy/alignment/carlin_aligner.py tests/test_api.py tests/test_packaging_metadata.py tests/test_cas9_align.py tests/test_integration.py' in pixi
     assert 'python -m pytest -q' in pixi
+
+
+def test_quality_workflow_exists():
+    workflow = Path(".github/workflows/quality.yml").read_text(encoding="utf-8")
+
+    assert "name: quality" in workflow
+    assert "pixi run quality" in workflow
+
+
+def test_readme_describes_library_only_usage():
+    readme = Path("README.md").read_text(encoding="utf-8")
+    assert "library-only" in readme.lower()
+    assert "legacy/internal" in readme
+    assert "bin/" in readme
+
+
+def test_developers_doc_mentions_quality_and_verification():
+    developers = Path("DEVELOPERS.md").read_text(encoding="utf-8")
+    assert "pixi run quality" in developers
+    assert "conda run -n darlinpy-test python -m pytest -q" in developers
