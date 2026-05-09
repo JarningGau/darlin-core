@@ -100,7 +100,12 @@ class MutationIdentifier:
     def __init__(self, min_confidence: float = 0.8):
         self.min_confidence = min_confidence
 
-    def identify_sequence_events(self, aligned_seq: AlignedSEQ) -> List[Mutation]:
+    def identify_sequence_events(
+        self, aligned_seq: AlignedSEQ, max_match_distance: int = 0
+    ) -> List[Mutation]:
+        if max_match_distance < 0:
+            raise ValueError("max_match_distance must be >= 0")
+
         query = aligned_seq.get_seq()
         ref = aligned_seq.get_ref()
         mutations: List[Mutation] = []
@@ -119,16 +124,47 @@ class MutationIdentifier:
             seq_old: List[str] = []
             seq_new: List[str] = []
 
-            while i < len(ref) and query[i] != ref[i]:
-                if ref[i] != "-":
-                    ref_pos += 1
-                    if start_ref_pos is None:
-                        start_ref_pos = ref_pos
-                    end_ref_pos = ref_pos
-                    seq_old.append(ref[i])
-                if query[i] != "-":
-                    seq_new.append(query[i])
-                i += 1
+            while True:
+                while i < len(ref) and query[i] != ref[i]:
+                    if ref[i] != "-":
+                        ref_pos += 1
+                        if start_ref_pos is None:
+                            start_ref_pos = ref_pos
+                        end_ref_pos = ref_pos
+                        seq_old.append(ref[i])
+                    if query[i] != "-":
+                        seq_new.append(query[i])
+                    i += 1
+
+                if max_match_distance == 0:
+                    break
+
+                match_start = i
+                match_ref_bases = 0
+                match_old: List[str] = []
+                match_new: List[str] = []
+
+                while i < len(ref) and query[i] == ref[i]:
+                    if ref[i] != "-":
+                        match_ref_bases += 1
+                    match_old.append(ref[i])
+                    match_new.append(query[i])
+                    i += 1
+
+                has_following_mismatch = i < len(ref) and query[i] != ref[i]
+                if not has_following_mismatch or match_ref_bases > max_match_distance:
+                    i = match_start
+                    break
+
+                for old_base, new_base in zip(match_old, match_new):
+                    if old_base != "-":
+                        ref_pos += 1
+                        if start_ref_pos is None:
+                            start_ref_pos = ref_pos
+                        end_ref_pos = ref_pos
+                        seq_old.append(old_base)
+                    if new_base != "-":
+                        seq_new.append(new_base)
 
             seq_old_str = "".join(seq_old)
             seq_new_str = "".join(seq_new)
@@ -217,7 +253,6 @@ def annotate_mutations(
     space: int = 3,
 ) -> List[Mutation]:
     identifier = MutationIdentifier()
-    mutations = identifier.identify_sequence_events(aligned_seq)
     if not merge_adjacent:
-        return mutations
-    return identifier.merge_adjacent_mutations(mutations, max_distance=space)
+        return identifier.identify_sequence_events(aligned_seq)
+    return identifier.identify_sequence_events(aligned_seq, max_match_distance=space)

@@ -323,7 +323,22 @@ class TestAnnotateMutations:
             space=3,
         )
 
-        assert [m.to_hgvs() for m in mutations] == ["3_7delinsA"]
+        assert [m.to_hgvs() for m in mutations] == ["3_7delinsTGGA"]
+
+    def test_annotate_mutations_merges_across_short_match_island(self):
+        aligned_seq = AlignedSEQ(
+            seq_segments=["AC-TGAA"],
+            ref_segments=["ACGTGTA"],
+        )
+
+        mutations = annotate_mutations(
+            aligned_seq,
+            cas9_mode=False,
+            merge_adjacent=True,
+            space=2,
+        )
+
+        assert [m.to_hgvs() for m in mutations] == ["3_6delinsTGA"]
 
     def test_annotate_mutations_no_mutations(self):
         aligned_seq = AlignedSEQ(

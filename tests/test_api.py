@@ -3,8 +3,10 @@
 DARLIN主API模块测试
 """
 
+import csv
 import pytest
 import time
+from pathlib import Path
 from darlinpy.api import analyze_sequences, AnalysisResult
 from darlinpy.mutations.mutation import MutationType
 
@@ -237,6 +239,58 @@ class TestAnalyzeSequences:
         
         assert result.method_used == 'exact'
 
+    def test_analyze_sequences_space_parameter_controls_merging(self):
+        query = "CGCCGGACTGCACGACAGTCGAAACGATGGAGTCGACACGACTCGCGCATAGGCGATGGGAGCT"
+
+        merged = analyze_sequences(
+            [query],
+            config="Col1a1",
+            method="exact",
+            min_sequence_length=20,
+            verbose=False,
+            merge_adjacent_mutations=True,
+            space=3,
+        )
+        split = analyze_sequences(
+            [query],
+            config="Col1a1",
+            method="exact",
+            min_sequence_length=20,
+            verbose=False,
+            merge_adjacent_mutations=True,
+            space=0,
+        )
+
+        assert [m.to_hgvs() for m in merged.mutations[0]] == ["22_23insAA", "50_265delinsGG"]
+        assert [m.to_hgvs() for m in split.mutations[0]] == ["22_23insAA", "50_263del", "265_265delinsG"]
+
+    def test_ca_benchmark_rows_match_truth_for_adjacent_merge_cases(self):
+        benchmark_path = Path("tests/data/CA_benchmark.tsv")
+        selected_queries = {
+            "CGCCGGACTGCACGACAGTCGAAACGATGGAGTCGACACGACTCGCGCATAGGCGATGGGAGCT",
+            "CGCCGGACTGCACGACAGTCGAACGATGGAGTCGACACGACTCGCGCATAGGAAAACGATGGGAGCT",
+        }
+
+        with benchmark_path.open() as handle:
+            rows = list(csv.DictReader(handle, delimiter="\t"))
+
+        for row in rows:
+            if row["query"] not in selected_queries:
+                continue
+
+            result = analyze_sequences(
+                [row["query"]],
+                config="Col1a1",
+                method="exact",
+                min_sequence_length=20,
+                verbose=False,
+                merge_adjacent_mutations=True,
+                space=3,
+            )
+
+            observed = ",".join(m.to_hgvs() for m in result.mutations[0])
+            assert observed == row["truth"]
+
     def test_analyze_sequences_expected_delins_allele(self):
         """测试特定等位基因的delins注释是否为23_265delinsG"""
         from darlinpy import analyze_sequences as analyze_sequences_public
@@ -423,7 +477,7 @@ class TestComplexMutationCases:
         
         # Extract mutation HGVS strings
         mutations = [m.to_hgvs() for m in results.mutations[0]]
-        expected = ["23_74del", "76_76delinsT", "104_211del", "238_239insAA", "265_266insA"]
+        expected = ["23_76delinsGT", "104_211del", "238_239insAA", "265_266insA"]
         
         assert mutations == expected, f"Expected {expected}, got {mutations}"
     
@@ -543,22 +597,16 @@ class TestComplexMutationCases:
         
         # Extract mutation HGVS strings
         mutations = [m.to_hgvs() for m in results.mutations[0]]
-        expected = ["14_262del", "265_265delinsT"]
+        expected = ["14_265delinsAGT"]
         
         assert mutations == expected, f"Expected {expected}, got {mutations}"
         
-        # Verify the scanner now emits direct contiguous events
+        # Verify the scanner now merges across the short matched island
         first_mutation = results.mutations[0][0]
         assert first_mutation.loc_start == 14
-        assert first_mutation.loc_end == 262
-        assert first_mutation.seq_new == ""
-        assert first_mutation.type == MutationType.DELETION
-
-        second_mutation = results.mutations[0][1]
-        assert second_mutation.loc_start == 265
-        assert second_mutation.loc_end == 265
-        assert second_mutation.seq_new == "T"
-        assert second_mutation.type == MutationType.INDEL
+        assert first_mutation.loc_end == 265
+        assert first_mutation.seq_new == "AGT"
+        assert first_mutation.type == MutationType.INDEL
     
     def test_case_6_delins_with_insertion_before_gap(self):
         """测试案例6：gap之前有插入的delins事件正确识别（19_270delinsGGGA）
@@ -585,15 +633,15 @@ class TestComplexMutationCases:
         
         # Extract mutation HGVS strings
         mutations = [m.to_hgvs() for m in results.mutations[0]]
-        expected = ["19_20delinsGG", "23_270del"]
+        expected = ["19_270delinsGGGA"]
         
         assert mutations == expected, f"Expected {expected}, got {mutations}"
         
-        # Verify the scanner now keeps the early mismatch block separate
+        # Verify the scanner now merges across the short matched island
         first_mutation = results.mutations[0][0]
         assert first_mutation.loc_start == 19
-        assert first_mutation.loc_end == 20
-        assert first_mutation.seq_new == "GG"
+        assert first_mutation.loc_end == 270
+        assert first_mutation.seq_new == "GGGA"
         assert first_mutation.type == MutationType.INDEL
     
     def test_case_7_complex_delins_with_multiple_insertions(self):
@@ -684,13 +732,13 @@ class TestComplexMutationCases:
         )
 
         mutations = [m.to_hgvs() for m in results.mutations[0]]
-        expected = ["19_19delinsA", "21_21delinsA", "24_266delinsA"]
+        expected = ["19_266delinsACAACA"]
         assert mutations == expected, f"Expected {expected}, got {mutations}"
 
         first_mutation = results.mutations[0][0]
         assert first_mutation.loc_start == 19
-        assert first_mutation.loc_end == 19
-        assert first_mutation.seq_new == "A"
+        assert first_mutation.loc_end == 266
+        assert first_mutation.seq_new == "ACAACA"
         assert first_mutation.type == MutationType.INDEL
 
     def test_issue_example_2_delins_and_insertion(self):
@@ -719,18 +767,18 @@ class TestComplexMutationCases:
         )
 
         mutations = [m.to_hgvs() for m in results.mutations[0]]
-        expected = ["19_19delinsC", "23_238del", "265_266insAG"]
+        expected = ["19_238delinsCCGA", "265_266insAG"]
         assert mutations == expected, f"Expected {expected}, got {mutations}"
 
         # 验证第一个 delins 事件
         first_mutation = results.mutations[0][0]
         assert first_mutation.loc_start == 19
-        assert first_mutation.loc_end == 19
-        assert first_mutation.seq_new == "C"
+        assert first_mutation.loc_end == 238
+        assert first_mutation.seq_new == "CCGA"
         assert first_mutation.type == MutationType.INDEL
 
         # 验证第二个插入事件
-        second_mutation = results.mutations[0][2]
+        second_mutation = results.mutations[0][1]
         assert second_mutation.loc_start == 265
         assert second_mutation.loc_end == 265
         assert (

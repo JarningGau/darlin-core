@@ -144,6 +144,7 @@ def analyze_sequences(
     dominant_threshold: float = 0.5,
     annotate_mutations_flag: bool = True,
     merge_adjacent_mutations: bool = True,
+    space: int = 3,
     verbose: bool = False,
     min_sequence_length: int = 50
 ) -> AnalysisResult:
@@ -157,6 +158,7 @@ def analyze_sequences(
         dominant_threshold: Dominant allele threshold
         annotate_mutations_flag: Whether to annotate mutations
         merge_adjacent_mutations: Whether to merge adjacent mutations
+        space: Maximum reference-space gap allowed when merging adjacent mutations
         verbose: Whether to show detailed information
         min_sequence_length: Minimum sequence length threshold, sequences shorter than this will be filtered
         
@@ -253,7 +255,8 @@ def analyze_sequences(
                         allele_result.allele,
                         cas9_mode=True,
                         cut_sites=cut_sites,
-                        merge_adjacent=merge_adjacent_mutations
+                        merge_adjacent=merge_adjacent_mutations,
+                        space=space,
                     )
                 else:
                     mutations = []
