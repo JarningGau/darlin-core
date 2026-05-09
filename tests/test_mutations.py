@@ -295,6 +295,36 @@ class TestAnnotateMutations:
 
         assert [m.to_hgvs() for m in cas9] == [m.to_hgvs() for m in basic]
 
+    def test_annotate_mutations_can_disable_merge(self):
+        aligned_seq = AlignedSEQ(
+            seq_segments=["AC-T", "GG", "AA"],
+            ref_segments=["ACGT", "GG", "TA"],
+        )
+
+        mutations = annotate_mutations(
+            aligned_seq,
+            cas9_mode=False,
+            merge_adjacent=False,
+            space=3,
+        )
+
+        assert [m.to_hgvs() for m in mutations] == ["3_3del", "7_7delinsA"]
+
+    def test_annotate_mutations_merges_when_enabled(self):
+        aligned_seq = AlignedSEQ(
+            seq_segments=["AC-T", "GG", "AA"],
+            ref_segments=["ACGT", "GG", "TA"],
+        )
+
+        mutations = annotate_mutations(
+            aligned_seq,
+            cas9_mode=False,
+            merge_adjacent=True,
+            space=3,
+        )
+
+        assert [m.to_hgvs() for m in mutations] == ["3_7delinsA"]
+
     def test_annotate_mutations_no_mutations(self):
         aligned_seq = AlignedSEQ(
             seq_segments=["ACGT", "TTGG"],

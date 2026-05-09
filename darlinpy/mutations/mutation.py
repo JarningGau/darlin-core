@@ -214,6 +214,10 @@ def annotate_mutations(
     cas9_mode: bool = True,
     cut_sites: Optional[List[int]] = None,
     merge_adjacent: bool = True,
+    space: int = 3,
 ) -> List[Mutation]:
     identifier = MutationIdentifier()
-    return identifier.identify_sequence_events(aligned_seq)
+    mutations = identifier.identify_sequence_events(aligned_seq)
+    if not merge_adjacent:
+        return mutations
+    return identifier.merge_adjacent_mutations(mutations, max_distance=space)
