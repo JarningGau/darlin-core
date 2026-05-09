@@ -13,6 +13,13 @@ from darlinpy.mutations.mutation import MutationType
 
 class TestAnalysisResult:
     """测试AnalysisResult数据类"""
+
+    def test_top_level_exports_are_library_entry_points(self):
+        import darlinpy
+
+        assert "analyze_sequences" in darlinpy.__all__
+        assert "AmpliconConfig" in darlinpy.__all__
+        assert "build_carlin_config" in darlinpy.__all__
     
     def test_analysis_result_creation(self):
         """测试AnalysisResult创建"""
@@ -144,7 +151,7 @@ class TestAnalysisResult:
         assert df['query'].iloc[1] == "TTGGTTGG"
         assert df['query_len'].iloc[1] == 8
         assert df['scores'].iloc[1] == 92.1
-        assert df['mutations'].iloc[1] == []  # 无突变
+        assert df['mutations'].iloc[1] == ""  # 无突变
     
     def test_print_summary(self, capsys):
         """测试打印摘要功能"""
@@ -164,9 +171,46 @@ class TestAnalysisResult:
         assert "Col1a1" in captured.out
         assert "coarse_grain" in captured.out
 
+    def test_analysis_result_to_df_uses_stable_empty_mutation_string(self):
+        result = AnalysisResult(
+            called_alleles=[],
+            mutations=[],
+            alignment_scores=[],
+            valid_sequences=[],
+        )
+        df = result.to_df()
+        assert list(df.columns) == [
+            "query",
+            "query_len",
+            "aligned_query",
+            "aligned_ref",
+            "scores",
+            "mutations",
+        ]
+
+        populated = AnalysisResult(
+            called_alleles=[None],
+            mutations=[[]],
+            alignment_scores=[0.0],
+            aligned_query=["ACGT"],
+            aligned_reference=["ACGT"],
+            valid_sequences=["ACGT"],
+        )
+        populated_df = populated.to_df()
+        assert populated_df.loc[0, "mutations"] == ""
+
 
 class TestAnalyzeSequences:
     """测试analyze_sequences主函数"""
+
+    def test_analyze_sequences_is_quiet_by_default(self, capsys):
+        from darlinpy.config.amplicon_configs import load_carlin_config_by_locus
+
+        ref = load_carlin_config_by_locus("Col1a1").get_full_reference_sequence()
+        analyze_sequences([ref], config="Col1a1", method="exact", verbose=False)
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
     
     def test_analyze_empty_sequences(self):
         """测试空序列列表"""
@@ -308,7 +352,7 @@ class TestAnalyzeSequences:
             verbose=False,
         )
         df = results.to_df()
-        assert df["mutations"].tolist() == ["23_265delinsG", []]
+        assert df["mutations"].tolist() == ["23_265delinsG", ""]
     
     def test_analyze_sequences_no_mutations(self):
         """测试不进行突变注释"""

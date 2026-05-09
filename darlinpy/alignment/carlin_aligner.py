@@ -6,12 +6,15 @@ Integrates CARLIN configuration and cas9_align algorithm to provide advanced ali
 """
 
 import numpy as np
+import logging
 from typing import Tuple, Optional, Dict, List
 from pathlib import Path
 
 from .cas9_align import cas9_align, nt2int, int2nt, print_cas9_alignment
 from .aligned_seq import AlignedSEQ, AlignedSEQMotif, SequenceSanitizer, desemble_sequence, calculate_motif_boundaries
 from ..config import AmpliconConfig, get_original_carlin_config, ScoringConfig, get_default_scoring_config
+
+logger = logging.getLogger(__name__)
 
 
 class CARLINAligner:
@@ -50,11 +53,6 @@ class CARLINAligner:
         # Encode reference sequence
         self.reference_encoded = nt2int(self.reference_sequence)
         
-        print(f"✅ CARLIN aligner initialized successfully")
-        print(f"   - Reference sequence length: {len(self.reference_sequence)} bp")
-        print(f"   - Scoring matrix: {self.scoring_config.matrix_type}")
-        print(f"   - Gap penalty range: {self.open_penalty_array.min():.1f}-{self.open_penalty_array.max():.1f}")
-    
     def align_sequence(self, query_sequence: str, 
                       verbose: bool = False,
                       sanitize: bool = True) -> Dict:
@@ -166,7 +164,7 @@ class CARLINAligner:
                 result = self.align_sequence(seq, verbose=verbose)
                 results.append(result)
             except Exception as e:
-                print(f"⚠️  Sequence {i+1} alignment failed: {e}")
+                logger.warning("Sequence %s alignment failed: %s", i + 1, e)
                 results.append({
                     'query_sequence': seq,
                     'error': str(e),

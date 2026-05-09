@@ -1,14 +1,9 @@
 """
-DARLIN Python - Python implementation of CARLIN sequence analysis tools
+Public library entry points for darlinpy.
 
-Main features:
-- CRISPR-Cas9 sequence alignment
-- Multiple amplicon templates support (Col1a1, Rosa, Tigre)
-- Allele calling
-- Mutation annotation
-- Advanced sequence analysis API
-
-Author: Jarning Gau
+Supported user-facing APIs are exported from this module. Internal subpackages
+remain importable for maintainers but are not part of the stable user contract
+unless explicitly re-exported here.
 """
 
 __version__ = "1.0.0"
@@ -20,11 +15,9 @@ from .config.amplicon_configs import AmpliconConfig
 from .utils.build_config import build_carlin_config
 
 __all__ = [
-    '__version__',
-    '__author__',
-    # Main API
-    'analyze_sequences',
-    # Create new template config
-    'AmpliconConfig',
-    'build_carlin_config'
-] 
+    "__version__",
+    "__author__",
+    "analyze_sequences",
+    "AmpliconConfig",
+    "build_carlin_config",
+]

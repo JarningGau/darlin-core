@@ -101,18 +101,19 @@ class AnalysisResult:
                 - scores: Alignment scores
                 - mutations: Comma-separated list of mutations in HGVS format
         """
-        mutations = []
-        for mut in self.mutations:
-            _mut = ','.join([m.to_hgvs() for m in mut]) if len(mut) > 0 else []
-            mutations.append(_mut)
-        
+        mutation_strings = []
+        for mut_list in self.mutations:
+            mutation_strings.append(
+                ",".join(m.to_hgvs() for m in mut_list) if mut_list else ""
+            )
+
         results_df = pd.DataFrame({
             'query': self.valid_sequences,
-            'query_len': [len(s) for s in self.valid_sequences], 
-            'aligned_query': self.aligned_query, 
+            'query_len': [len(s) for s in self.valid_sequences],
+            'aligned_query': self.aligned_query,
             'aligned_ref': self.aligned_reference,
-            'scores': self.alignment_scores, 
-            'mutations': mutations,
+            'scores': self.alignment_scores,
+            'mutations': mutation_strings,
         })
         return results_df
     
