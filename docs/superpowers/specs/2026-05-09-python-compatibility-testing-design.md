@@ -154,22 +154,30 @@ These jobs should run and report status, but they should not fail the main PR or
 
 Minimum dependency environments must use explicit pinned versions rather than relying on resolver behavior.
 
-Initial minimum runtime dependency set:
+Minimum dependency testing must be defined per Python boundary when upstream packages have different interpreter support windows.
 
-- `numpy==1.20.0`
-- `scipy==1.7.0`
-- `pandas==1.3.0`
+Initial minimum runtime dependency sets:
 
-This set should live in a dedicated constraints or requirements file so that the meaning of "minimum dependency test" remains stable over time.
+- `py38-min`
+  - `numpy==1.20.0`
+  - `scipy==1.7.0`
+  - `pandas==1.3.0`
+- `py311-min`
+  - `numpy==1.23.5`
+  - `scipy==1.9.3`
+  - `pandas==1.5.3`
 
-Recommended file:
+These sets should live in dedicated requirements files so that the meaning of each minimum-dependency job remains stable over time.
 
-- `requirements-min.txt`
+Recommended files:
 
-The tox environment for `min` should install:
+- `requirements-min-py38.txt`
+- `requirements-min-py311.txt`
+
+The tox environments for `min` should install:
 
 - test/build tooling
-- pinned minimum runtime dependencies
+- the pinned minimum runtime dependencies for that Python boundary
 - the package itself from source
 
 ### Latest Dependency Environments
@@ -286,7 +294,8 @@ The implementation phase should produce at least:
 
 - `.github/workflows/compatibility.yml`
 - `tox.ini`
-- `requirements-min.txt`
+- `requirements-min-py38.txt`
+- `requirements-min-py311.txt`
 - a small documentation update in `DEVELOPERS.md`
 
 It may also produce one of the following if needed for test stability:

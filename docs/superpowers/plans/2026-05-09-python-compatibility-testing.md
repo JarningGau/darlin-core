@@ -4,7 +4,7 @@
 
 **Goal:** Add a CI-first compatibility test system for `darlinpy` that validates reduced Python/dependency boundaries, required C++ extension availability, and a stable pytest subset, with exact local reproduction through `tox`.
 
-**Architecture:** Define the compatibility contract once in `tox.ini`, keep minimum dependencies explicit in `requirements-min.txt`, and make GitHub Actions call named tox environments instead of re-encoding install logic. Limit the matrix to `py38-min`, `py39-max`, `py311-min`, `py311-max`, plus non-blocking `py312-max`, and keep compatibility verification separate from the full repository test suite.
+**Architecture:** Define the compatibility contract once in `tox.ini`, keep minimum dependencies explicit in Python-specific requirement files, and make GitHub Actions call named tox environments instead of re-encoding install logic. Limit the matrix to `py38-min`, `py39-max`, `py311-min`, `py311-max`, plus non-blocking `py312-max`, and keep compatibility verification separate from the full repository test suite.
 
 **Tech Stack:** Python packaging (`setuptools`, `pyproject.toml`), `tox`, `pytest`, GitHub Actions, `pip`, `pybind11`
 
@@ -18,8 +18,10 @@
   Responsibility: run the reduced compatibility matrix in GitHub Actions and map each job to one tox environment.
 - `tox.ini`
   Responsibility: define the compatibility environments, dependency modes, smoke checks, and pytest command.
-- `requirements-min.txt`
-  Responsibility: pin the minimum runtime dependency boundary used by `*-min` tox jobs.
+- `requirements-min-py38.txt`
+  Responsibility: pin the minimum runtime dependency boundary for `py38-min`.
+- `requirements-min-py311.txt`
+  Responsibility: pin the minimum runtime dependency boundary for `py311-min`.
 
 ### Modify
 
@@ -60,37 +62,49 @@ pytest \
 
 This keeps the matrix focused on stable core behavior while still covering API, config, extension-backed alignment, mutation logic, and a minimal integration path.
 
-### Task 1: Add Minimum-Dependency Boundary File
+### Task 1: Add Minimum-Dependency Boundary Files
 
 **Files:**
-- Create: `requirements-min.txt`
-- Test: `python -m pip install -r requirements-min.txt`
+- Create: `requirements-min-py38.txt`
+- Create: `requirements-min-py311.txt`
+- Test: `python -m pip install -r requirements-min-py38.txt`
+- Test: `python -m pip install -r requirements-min-py311.txt`
 
-- [ ] **Step 1: Write the file with the exact minimum runtime pins**
+- [ ] **Step 1: Write the Python-specific minimum runtime pins**
 
 ```text
+# requirements-min-py38.txt
 numpy==1.20.0
 scipy==1.7.0
 pandas==1.3.0
+
+# requirements-min-py311.txt
+numpy==1.23.5
+scipy==1.9.3
+pandas==1.5.3
 ```
 
-- [ ] **Step 2: Verify the file is readable by pip**
+- [ ] **Step 2: Verify each file is readable by pip under its target Python**
 
-Run: `python -m pip install -r requirements-min.txt --dry-run`
-Expected: pip resolves `numpy==1.20.0`, `scipy==1.7.0`, and `pandas==1.3.0` without syntax errors in the requirements file.
+Run: `pixi exec -s python=3.8 -s pip python -m pip install -r requirements-min-py38.txt --dry-run`
+Expected: pip resolves `numpy==1.20.0`, `scipy==1.7.0`, and `pandas==1.3.0` under Python 3.8 without syntax errors.
+
+Run: `pixi exec -s python=3.11 -s pip python -m pip install -r requirements-min-py311.txt --dry-run`
+Expected: pip resolves `numpy==1.23.5`, `scipy==1.9.3`, and `pandas==1.5.3` under Python 3.11 without syntax errors.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add requirements-min.txt
-git commit -m "test: add minimum dependency constraints"
+git add requirements-min-py38.txt requirements-min-py311.txt
+git commit -m "test: add python-specific minimum dependency constraints"
 ```
 
 ### Task 2: Add tox Environments for Compatibility Jobs
 
 **Files:**
 - Create: `tox.ini`
-- Reuse: `requirements-min.txt`
+- Reuse: `requirements-min-py38.txt`
+- Reuse: `requirements-min-py311.txt`
 - Test: `tox -l`
 
 - [ ] **Step 1: Write a failing tox configuration skeleton**
@@ -104,7 +118,7 @@ isolated_build = true
 
 [testenv]
 description = compatibility job
-package = editable
+skip_install = true
 deps =
     pytest
 commands =
@@ -127,12 +141,14 @@ isolated_build = true
 
 [testenv]
 description = darlinpy compatibility job
-package = editable
+skip_install = true
 deps =
     pytest
 commands_pre =
-    min: python -m pip install -r requirements-min.txt
+    py38-min: python -m pip install -r requirements-min-py38.txt
+    py311-min: python -m pip install -r requirements-min-py311.txt
     max: python -m pip install numpy scipy pandas
+    python -m pip install -e .
 commands =
     python -c "import darlinpy; print(darlinpy.__version__)"
     python -c "from darlinpy.alignment.cas9_align import HAS_CPP_IMPL; assert HAS_CPP_IMPL is True"
@@ -165,7 +181,7 @@ Expected: PASS, or a concrete dependency-compatibility failure tied to the minim
 - [ ] **Step 7: Commit**
 
 ```bash
-git add tox.ini requirements-min.txt
+git add tox.ini requirements-min-py38.txt requirements-min-py311.txt
 git commit -m "test: add tox compatibility environments"
 ```
 
@@ -300,7 +316,8 @@ The exploratory compatibility job is:
 
 - `py312-max`
 
-`min` means the pinned runtime floor from `requirements-min.txt`.
+`py38-min` means the pinned runtime floor from `requirements-min-py38.txt`.
+`py311-min` means the earliest dependency set that still supports Python 3.11 from `requirements-min-py311.txt`.
 `max` means the latest versions resolved by pip at test time.
 
 Run a local compatibility job with tox:
@@ -328,7 +345,7 @@ git commit -m "docs: add compatibility testing workflow"
 ### Task 5: Validate End-to-End Locally Before Claiming Completion
 
 **Files:**
-- Reuse: `tox.ini`, `.github/workflows/compatibility.yml`, `requirements-min.txt`, `DEVELOPERS.md`
+- Reuse: `tox.ini`, `.github/workflows/compatibility.yml`, `requirements-min-py38.txt`, `requirements-min-py311.txt`, `DEVELOPERS.md`
 - Test: local command results only
 
 - [ ] **Step 1: Run all required local compatibility jobs**
@@ -352,12 +369,12 @@ Expected: PASS if Python 3.12 already works; otherwise fail with a concrete sign
 - [ ] **Step 3: Inspect the git diff for unintended changes**
 
 Run: `git status --short`
-Expected: only `.github/workflows/compatibility.yml`, `tox.ini`, `requirements-min.txt`, and `DEVELOPERS.md` are modified or staged for this feature work.
+Expected: only `.github/workflows/compatibility.yml`, `tox.ini`, `requirements-min-py38.txt`, `requirements-min-py311.txt`, `DEVELOPERS.md`, and the approved spec/plan docs are modified or staged for this feature work.
 
 - [ ] **Step 4: Create the final commit**
 
 ```bash
-git add .github/workflows/compatibility.yml tox.ini requirements-min.txt DEVELOPERS.md
+git add .github/workflows/compatibility.yml tox.ini requirements-min-py38.txt requirements-min-py311.txt DEVELOPERS.md docs/superpowers/specs/2026-05-09-python-compatibility-testing-design.md docs/superpowers/plans/2026-05-09-python-compatibility-testing.md
 git commit -m "test: add python compatibility matrix"
 ```
 
