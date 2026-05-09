@@ -3,13 +3,6 @@
 集成测试 - 验证CARLIN比对系统的端到端功能
 """
 
-import numpy as np
-import sys
-import os
-
-# 添加路径以便导入模块
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
 from darlinpy.alignment import CARLINAligner, align_to_carlin, create_default_aligner
 from darlinpy.config import get_original_carlin_config
 
@@ -33,10 +26,6 @@ class TestCARLINIntegration:
         assert result['statistics']['query_gaps'] == 0
         assert result['statistics']['reference_gaps'] == 0
         
-        print("✅ 完美序列端到端测试通过")
-        print(f"   - 比对得分: {result['alignment_score']:.1f}")
-        print(f"   - 序列一致性: {result['statistics']['identity']*100:.1f}%")
-    
     def test_end_to_end_mutated_sequence(self):
         """测试带突变序列的端到端比对"""
         config = get_original_carlin_config()
@@ -63,11 +52,6 @@ class TestCARLINIntegration:
         total_differences = stats['query_gaps'] + stats['reference_gaps'] + stats['mismatches']
         assert total_differences > 0
         
-        print("✅ 突变序列端到端测试通过")
-        print(f"   - 比对得分: {result['alignment_score']:.1f}")
-        print(f"   - 序列一致性: {result['statistics']['identity']*100:.1f}%")
-        print(f"   - 检测到的差异: {total_differences}")
-    
     def test_batch_processing(self):
         """测试批量处理功能"""
         config = get_original_carlin_config()
@@ -103,10 +87,6 @@ class TestCARLINIntegration:
                 assert result['alignment_score'] > 0
                 assert 0 <= result['statistics']['identity'] <= 1.0
         
-        print("✅ 批量处理测试通过")
-        print(f"   - 处理序列数: {len(test_sequences)}")
-        print(f"   - 成功比对数: {len(successful_results)}")
-    
     def test_config_integration(self):
         """测试配置系统集成"""
         # 测试配置加载
@@ -124,10 +104,6 @@ class TestCARLINIntegration:
         assert len(aligner.open_penalty_array) == len(aligner.reference_sequence) + 1
         assert len(aligner.close_penalty_array) == len(aligner.reference_sequence) + 1
         
-        print("✅ 配置系统集成测试通过")
-        print(f"   - CARLIN序列长度: {len(aligner.reference_sequence)} bp")
-        print(f"   - 惩罚数组长度: {len(aligner.open_penalty_array)}")
-    
     def test_motif_analysis(self):
         """测试motif级别的分析"""
         config = get_original_carlin_config()
@@ -152,9 +128,6 @@ class TestCARLINIntegration:
         segments_stats = motif_analysis['segments']
         assert len(segments_stats) == 10
         
-        print("✅ Motif分析测试通过")
-        print(f"   - 检测到segments: {len(segments_stats)}")
-    
     def test_position_specific_penalties(self):
         """测试位置特异性惩罚的效果"""
         config = get_original_carlin_config()
@@ -182,11 +155,6 @@ class TestCARLINIntegration:
         
         assert cutsite_score > consite_score
         
-        print("✅ 位置特异性惩罚测试通过")
-        print(f"   - Cutsite插入得分: {cutsite_score:.1f}")
-        print(f"   - Consite插入得分: {consite_score:.1f}")
-        print(f"   - 得分差异: {cutsite_score - consite_score:.1f}")
-    
     def test_error_handling(self):
         """测试错误处理"""
         aligner = create_default_aligner()
@@ -215,36 +183,3 @@ class TestCARLINIntegration:
         except Exception as e:
             assert False, f"正常序列不应该抛出异常: {e}"
         
-        print("✅ 错误处理测试通过")
-
-
-def main():
-    """主测试函数"""
-    print("=== CARLIN系统集成测试 ===")
-    print()
-    
-    test = TestCARLINIntegration()
-    
-    test.test_end_to_end_perfect_sequence()
-    test.test_end_to_end_mutated_sequence()
-    test.test_batch_processing()
-    test.test_config_integration()
-    test.test_motif_analysis()
-    test.test_position_specific_penalties()
-    test.test_error_handling()
-    
-    print()
-    print("🎉 所有集成测试通过！")
-    print()
-    print("✅ 验证的功能:")
-    print("   - 端到端序列比对")
-    print("   - 突变检测和处理")
-    print("   - 批量序列处理")
-    print("   - 配置系统集成")
-    print("   - Motif级别分析")
-    print("   - 位置特异性惩罚")
-    print("   - 错误处理机制")
-
-
-if __name__ == "__main__":
-    main() 

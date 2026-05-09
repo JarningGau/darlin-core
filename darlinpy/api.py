@@ -5,7 +5,7 @@ DARLIN Main API Module
 Provides simplified high-level interface for CARLIN sequence analysis
 """
 
-from typing import List, Optional, Dict, Any, Union, Tuple
+from typing import List, Dict, Any, Union
 from dataclasses import dataclass, field
 import time
 import pandas as pd
@@ -119,19 +119,19 @@ class AnalysisResult:
     
     def print_summary(self):
         """Print analysis results summary"""
-        print(f"CARLIN Sequence Analysis Results Summary")
-        print(f"=" * 40)
+        print("CARLIN Sequence Analysis Results Summary")
+        print("=" * 40)
         print(f"Configuration: {self.config_used}")
         print(f"Method: {self.method_used}")
         print(f"Processing time: {self.processing_time:.2f} seconds")
-        print(f"")
-        print(f"Sequence statistics:")
+        print("")
+        print("Sequence statistics:")
         print(f"  Total sequences: {self.num_sequences}")
         print(f"  Successfully called alleles: {self.num_called_alleles}")
         print(f"  Calling success rate: {self.calling_success_rate:.1%}")
         print(f"  Average alignment score: {self.average_alignment_score:.2f}")
-        print(f"")
-        print(f"Mutation statistics:")
+        print("")
+        print("Mutation statistics:")
         print(f"  Total mutations: {self.total_mutations}")
         mut_summary = self.get_mutation_summary()
         for mut_type, count in mut_summary.items():

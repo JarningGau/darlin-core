@@ -7,12 +7,11 @@ Integrates CARLIN configuration and cas9_align algorithm to provide advanced ali
 
 import numpy as np
 import logging
-from typing import Tuple, Optional, Dict, List
-from pathlib import Path
+from typing import Optional, Dict, List
 
-from .cas9_align import cas9_align, nt2int, int2nt, print_cas9_alignment
-from .aligned_seq import AlignedSEQ, AlignedSEQMotif, SequenceSanitizer, desemble_sequence, calculate_motif_boundaries
-from ..config import AmpliconConfig, get_original_carlin_config, ScoringConfig, get_default_scoring_config
+from .cas9_align import cas9_align, nt2int, int2nt
+from .aligned_seq import AlignedSEQ, SequenceSanitizer, desemble_sequence, calculate_motif_boundaries
+from ..config import AmpliconConfig, ScoringConfig, get_default_scoring_config
 
 logger = logging.getLogger(__name__)
 
@@ -266,7 +265,7 @@ class CARLINAligner:
         print(f"Alignment score: {result['alignment_score']:.2f}")
         
         stats = result['statistics']
-        print(f"Alignment statistics:")
+        print("Alignment statistics:")
         print(f"  - Aligned length: {stats['aligned_length']}")
         print(f"  - Matches: {stats['matches']} ({stats['identity']*100:.1f}%)")
         print(f"  - Mismatches: {stats['mismatches']}")

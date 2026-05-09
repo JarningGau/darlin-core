@@ -5,12 +5,7 @@
 
 import numpy as np
 import pytest
-import sys
-import os
 import importlib
-
-# 添加路径以便导入模块
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from darlinpy.alignment.cas9_align import (
     cas9_align,
@@ -106,11 +101,6 @@ class TestCAS9Align:
         al_seq_str = int2nt(al_seq)
         al_ref_str = int2nt(al_ref)
         
-        print(f"\n插入测试结果:")
-        print(f"序列: {al_seq_str}")
-        print(f"参考: {al_ref_str}")
-        print(f"得分: {score}")
-        
         # 应该包含gap
         assert '-' in al_ref_str
         assert len(al_seq_str) == len(al_ref_str)
@@ -130,11 +120,6 @@ class TestCAS9Align:
         
         al_seq_str = int2nt(al_seq)
         al_ref_str = int2nt(al_ref)
-        
-        print(f"\n删除测试结果:")
-        print(f"序列: {al_seq_str}")
-        print(f"参考: {al_ref_str}")
-        print(f"得分: {score}")
         
         # 应该包含gap
         assert '-' in al_seq_str
@@ -160,12 +145,6 @@ class TestCAS9Align:
         
         al_seq_str = int2nt(al_seq)
         al_ref_str = int2nt(al_ref)
-        
-        print(f"\n位置特异性惩罚测试:")
-        print(f"序列: {al_seq_str}")
-        print(f"参考: {al_ref_str}")
-        print(f"得分: {score}")
-        print(f"低惩罚区域: 位置2-3 (开启惩罚={open_penalty[2]}, 关闭惩罚={close_penalty[2]})")
         
         # 由于在低惩罚区域，gap应该更容易出现在那里
         assert '-' in al_ref_str or '-' in al_seq_str
@@ -209,42 +188,16 @@ class TestCAS9Align:
             cas9_align(seq, ref, open_penalty, close_penalty, self.sub_score)
 
 
-def test_print_function():
+def test_print_function(capsys):
     """测试打印函数"""
     al_seq = [1, 2, 0, 3, 4]  # A C - G T
     al_ref = [1, 2, 3, 3, 4]  # A C G G T
     score = 10.5
-    
-    print("\n=== 打印函数测试 ===")
+
     print_cas9_alignment(al_seq, al_ref, score)
+    captured = capsys.readouterr()
 
-
-if __name__ == "__main__":
-    # 运行测试
-    test = TestCAS9Align()
-    test.setup_method()
-    
-    print("=== 运行cas9_align测试 ===")
-    
-    test.test_sequence_encoding()
-    print("✅ 序列编码测试通过")
-    
-    test.test_perfect_match()
-    print("✅ 完全匹配测试通过")
-    
-    test.test_single_mismatch()
-    print("✅ 单个不匹配测试通过")
-    
-    test.test_insertion()
-    print("✅ 插入测试通过")
-    
-    test.test_deletion()
-    print("✅ 删除测试通过")
-    
-    test.test_position_specific_penalty()
-    print("✅ 位置特异性惩罚测试通过")
-    
-    test_print_function()
-    print("✅ 打印函数测试通过")
-    
-    print("\n🎉 所有测试通过！cas9_align算法工作正常！") 
+    assert "Sequence: AC-GT" in captured.out
+    assert "Reference: ACGGT" in captured.out
+    assert "Score: 10.50" in captured.out
+    assert "Match: || ||" in captured.out

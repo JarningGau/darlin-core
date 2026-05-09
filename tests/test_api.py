@@ -5,7 +5,6 @@ DARLIN主API模块测试
 
 import csv
 import pytest
-import time
 from pathlib import Path
 from darlinpy.api import analyze_sequences, AnalysisResult
 from darlinpy.mutations.mutation import MutationType
