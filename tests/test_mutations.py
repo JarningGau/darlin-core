@@ -226,6 +226,46 @@ class TestMutationIdentifier:
 
         assert [m.to_hgvs() for m in mutations] == ["3_3del", "7_7delinsA"]
 
+    def test_merge_adjacent_mutations_merges_when_distance_equals_threshold(self):
+        identifier = MutationIdentifier()
+        mutations = [
+            Mutation(MutationType.DELETION, 10, 12, "AAA", ""),
+            Mutation(MutationType.INDEL, 16, 16, "C", "T"),
+        ]
+
+        merged = identifier.merge_adjacent_mutations(mutations, max_distance=3)
+
+        assert [m.to_hgvs() for m in merged] == ["10_16delinsT"]
+
+    def test_merge_adjacent_mutations_does_not_merge_when_distance_exceeds_threshold(self):
+        identifier = MutationIdentifier()
+        mutations = [
+            Mutation(MutationType.DELETION, 10, 12, "AAA", ""),
+            Mutation(MutationType.INDEL, 17, 17, "C", "T"),
+        ]
+
+        merged = identifier.merge_adjacent_mutations(mutations, max_distance=3)
+
+        assert [m.to_hgvs() for m in merged] == ["10_12del", "17_17delinsT"]
+
+    def test_merge_adjacent_mutations_supports_chained_merges(self):
+        identifier = MutationIdentifier()
+        mutations = [
+            Mutation(MutationType.DELETION, 10, 12, "AAA", ""),
+            Mutation(MutationType.INDEL, 15, 15, "C", "T"),
+            Mutation(MutationType.DELETION, 19, 20, "GG", ""),
+        ]
+
+        merged = identifier.merge_adjacent_mutations(mutations, max_distance=3)
+
+        assert [m.to_hgvs() for m in merged] == ["10_20delinsT"]
+
+    def test_merge_adjacent_mutations_rejects_negative_distance(self):
+        identifier = MutationIdentifier()
+
+        with pytest.raises(ValueError):
+            identifier.merge_adjacent_mutations([], max_distance=-1)
+
 
 class TestAnnotateMutations:
     def test_annotate_mutations_basic(self):

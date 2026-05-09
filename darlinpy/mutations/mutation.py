@@ -170,7 +170,24 @@ class MutationIdentifier:
     def merge_adjacent_mutations(
         self, mutations: List[Mutation], max_distance: int = 3
     ) -> List[Mutation]:
-        return sorted(mutations, key=lambda m: m.loc_start)
+        if max_distance < 0:
+            raise ValueError("max_distance must be >= 0")
+        if len(mutations) <= 1:
+            return list(mutations)
+
+        ordered = sorted(mutations, key=lambda m: (m.loc_start, m.loc_end))
+        merged = [ordered[0]]
+
+        for mutation in ordered[1:]:
+            current = merged[-1]
+            distance = mutation.loc_start - current.loc_end - 1
+
+            if distance <= max_distance:
+                merged[-1] = self._merge_two_mutations(current, mutation)
+            else:
+                merged.append(mutation)
+
+        return merged
 
     def _merge_two_mutations(self, mut1: Mutation, mut2: Mutation) -> Mutation:
         seq_old = mut1.seq_old + mut2.seq_old
