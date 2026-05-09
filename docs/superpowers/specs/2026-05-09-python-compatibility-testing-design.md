@@ -63,7 +63,7 @@ Python `3.12` will be tested as exploratory only. Failures on `3.12` should be v
 
 The design is successful when all of the following are true:
 
-1. Every supported Python version is tested in CI against both minimum and latest dependency sets.
+1. CI covers a reduced but intentional compatibility matrix that exercises the supported-version boundaries and dependency boundaries.
 2. The package installs from source in each environment using `pip install -e .`.
 3. The compiled module `darlinpy.alignment._cas9_align` is built successfully, and `darlinpy.alignment.cas9_align.HAS_CPP_IMPL` evaluates to `True`.
 4. A stable compatibility-focused pytest subset passes in each required environment.
@@ -133,22 +133,17 @@ The design has four layers:
 
 ### Required Matrix
 
-The required CI matrix contains 8 blocking jobs:
+The required CI matrix contains 4 blocking jobs:
 
 - `py38-min`
-- `py38-max`
-- `py39-min`
 - `py39-max`
-- `py310-min`
-- `py310-max`
 - `py311-min`
 - `py311-max`
 
 ### Exploratory Matrix
 
-The exploratory CI matrix contains 2 non-blocking jobs:
+The exploratory CI matrix contains 1 non-blocking job:
 
-- `py312-min`
 - `py312-max`
 
 These jobs should run and report status, but they should not fail the main PR or branch protection checks.
@@ -230,14 +225,9 @@ If some existing tests are too unstable for matrix use, they should be excluded 
 Recommended environment naming pattern:
 
 - `py38-min`
-- `py38-max`
-- `py39-min`
 - `py39-max`
-- `py310-min`
-- `py310-max`
 - `py311-min`
 - `py311-max`
-- `py312-min`
 - `py312-max`
 
 Each environment should:
@@ -259,7 +249,7 @@ Add a workflow file at:
 The workflow should:
 
 - trigger on pull requests and pushes to the main development branch
-- use a matrix over Python version and dependency mode
+- use a reduced matrix over Python version and dependency mode
 - call the corresponding `tox` environment rather than reimplementing install logic inline
 - mark Python `3.12` jobs as non-blocking
 - surface job names clearly so failures identify both axes immediately
@@ -273,6 +263,7 @@ Every CI job must have a direct local equivalent.
 Examples:
 
 - `tox -e py38-min`
+- `tox -e py311-min`
 - `tox -e py311-max`
 - `tox -e py312-max`
 
@@ -349,7 +340,8 @@ The concrete compatibility contract should be:
 
 - supported: Python `3.8-3.11`
 - exploratory: Python `3.12`
-- dependencies per Python version: `min` and `max`
+- required CI jobs: `py38-min`, `py39-max`, `py311-min`, `py311-max`
+- exploratory CI job: `py312-max`
 - pass conditions: source install succeeds, C++ extension is active, compatibility pytest subset passes
 
 This gives `darlinpy` a clear, enforceable support boundary without overbuilding the CI system.
