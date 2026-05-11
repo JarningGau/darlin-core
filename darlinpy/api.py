@@ -12,7 +12,6 @@ import pandas as pd
 
 from .config.amplicon_configs import AmpliconConfig
 from .alignment.carlin_aligner import CARLINAligner
-from .calling.allele_caller import AlleleCaller, AlleleCallResult
 from .mutations.mutation import Mutation, annotate_mutations
 
 
@@ -20,53 +19,37 @@ from .mutations.mutation import Mutation, annotate_mutations
 class AnalysisResult:
     """
     CARLIN sequence analysis results
-    
-    Contains complete analysis results including allele calling, mutation annotation and statistics
-    
-    Attributes:
-        called_alleles: List of called alleles
-        mutations: List of mutations corresponding to each allele
-        alignment_scores: Alignment scores for each sequence
-        aligned_query: Aligned input sequences
-        aligned_reference: Aligned reference sequences
-        valid_sequences: List of valid sequences after filtering
-        summary_stats: Summary statistics
-        processing_time: Processing time in seconds
-        config_used: Configuration name used
-        method_used: Calling method used
+
+    Contains alignment, mutation annotation, and summary statistics for each
+    valid input sequence.
     """
-    called_alleles: List[AlleleCallResult]
     mutations: List[List[Mutation]]
     alignment_scores: List[float]
-    summary_stats: Dict[str, Any] = field(default_factory=dict)  # Provide default to avoid dataclass parameter order errors
+    summary_stats: Dict[str, Any] = field(default_factory=dict)
     aligned_query: List[str] = field(default_factory=list)
     aligned_reference: List[str] = field(default_factory=list)
     valid_sequences: List[str] = field(default_factory=list)
     processing_time: float = 0.0
-    config_used: str = "OriginalCARLIN"
-    method_used: str = "coarse_grain"
+    config_used: str = "Col1a1"
 
     def __post_init__(self):
         """Validate result data consistency"""
-        if len(self.called_alleles) != len(self.mutations):
-            raise ValueError("called_alleles and mutations must have the same length")
+        expected = len(self.mutations)
+        if expected == 0:
+            return
+        for field_name, values in (
+            ("alignment_scores", self.alignment_scores),
+            ("aligned_query", self.aligned_query),
+            ("aligned_reference", self.aligned_reference),
+            ("valid_sequences", self.valid_sequences),
+        ):
+            if values and len(values) != expected:
+                raise ValueError(f"mutations and {field_name} must have the same length")
     
     @property
     def num_sequences(self) -> int:
         """Return total number of analyzed sequences"""
         return len(self.alignment_scores)
-    
-    @property
-    def num_called_alleles(self) -> int:
-        """Return number of successfully called alleles"""
-        return len([a for a in self.called_alleles if a.is_callable()])
-    
-    @property
-    def calling_success_rate(self) -> float:
-        """Return allele calling success rate"""
-        if not self.called_alleles:
-            return 0.0
-        return self.num_called_alleles / len(self.called_alleles)
     
     @property
     def total_mutations(self) -> int:
@@ -122,13 +105,10 @@ class AnalysisResult:
         print("CARLIN Sequence Analysis Results Summary")
         print("=" * 40)
         print(f"Configuration: {self.config_used}")
-        print(f"Method: {self.method_used}")
         print(f"Processing time: {self.processing_time:.2f} seconds")
         print("")
         print("Sequence statistics:")
         print(f"  Total sequences: {self.num_sequences}")
-        print(f"  Successfully called alleles: {self.num_called_alleles}")
-        print(f"  Calling success rate: {self.calling_success_rate:.1%}")
         print(f"  Average alignment score: {self.average_alignment_score:.2f}")
         print("")
         print("Mutation statistics:")
@@ -140,9 +120,7 @@ class AnalysisResult:
 
 def analyze_sequences(
     sequences: List[str],
-    config: Union[str, AmpliconConfig] = 'Col1a1',  # Changed to default Col1a1
-    method: str = 'coarse_grain',
-    dominant_threshold: float = 0.5,
+    config: Union[str, AmpliconConfig] = 'Col1a1',
     annotate_mutations_flag: bool = True,
     merge_adjacent_mutations: bool = True,
     space: int = 3,
@@ -155,8 +133,6 @@ def analyze_sequences(
     Args:
         sequences: List of sequences to analyze
         config: Configuration, can be locus name string or AmpliconConfig object, defaults to 'Col1a1', options: "Col1a1", "Rosa", "Tigre"
-        method: Calling method ('exact' or 'coarse_grain')
-        dominant_threshold: Dominant allele threshold
         annotate_mutations_flag: Whether to annotate mutations
         merge_adjacent_mutations: Whether to merge adjacent mutations
         space: Maximum reference-space gap allowed when merging adjacent mutations
@@ -188,10 +164,7 @@ def analyze_sequences(
     
     if verbose:
         print(f"Using configuration: {config}")
-    
-    if method not in ['exact', 'coarse_grain']:
-        raise ValueError(f"Unsupported calling method: {method}")
-    
+
     if not sequences:
         raise ValueError("Sequence list cannot be empty")
     
@@ -219,29 +192,8 @@ def analyze_sequences(
         if verbose:
             avg_score = sum(alignment_scores) / len(alignment_scores)
             print(f"Alignment completed, average score: {avg_score:.2f}")
-        
-        # 3. Allele calling
-        if verbose:
-            print("Performing allele calling...")
-        
-        # Initialize AlleleCaller
-        caller = AlleleCaller(amplicon_config=amplicon_config, dominant_threshold=dominant_threshold)
-        
-        # Choose calling strategy based on method
-        called_alleles = []
-        for aligned_seq in aligned_sequences:
-            if method == 'exact':
-                allele_result = caller.call_alleles_exact([aligned_seq])
-            else:  # coarse_grain
-                allele_result = caller.call_alleles_coarse_grain([aligned_seq])
-            
-            called_alleles.append(allele_result)
-        
-        if verbose:
-            callable_count = len([a for a in called_alleles if a.is_callable()])
-            print(f"Allele calling completed, successfully called: {callable_count}/{len(called_alleles)}")
-        
-        # 4. Mutation annotation
+
+        # 3. Mutation annotation
         mutations_list = []
         if annotate_mutations_flag:
             if verbose:
@@ -249,45 +201,43 @@ def analyze_sequences(
             
             # Get CARLIN cut site information
             cut_sites = _get_cut_sites(amplicon_config)
-            
-            for allele_result in called_alleles:
-                if allele_result.is_callable() and allele_result.allele:
+
+            for aligned_seq in aligned_sequences:
+                if aligned_seq is None:
+                    mutations = []
+                else:
                     mutations = annotate_mutations(
-                        allele_result.allele,
+                        aligned_seq,
                         cas9_mode=True,
                         cut_sites=cut_sites,
                         merge_adjacent=merge_adjacent_mutations,
                         space=space,
                     )
-                else:
-                    mutations = []
                 mutations_list.append(mutations)
-            
+
             if verbose:
                 total_mutations = sum(len(muts) for muts in mutations_list)
                 print(f"Mutation annotation completed, detected {total_mutations} mutations")
         else:
-            mutations_list = [[] for _ in called_alleles]
-        
-        # 5. Generate statistics
+            mutations_list = [[] for _ in aligned_sequences]
+
+        # 4. Generate statistics
         summary_stats = _generate_summary_stats(
-            valid_sequences, alignment_results, called_alleles, mutations_list
+            valid_sequences, alignment_results, mutations_list
         )
-        
-        # 6. Build result object
+
+        # 5. Build result object
         processing_time = time.time() - start_time
-        
+
         result = AnalysisResult(
-            called_alleles=called_alleles,
             mutations=mutations_list,
             alignment_scores=alignment_scores,
             summary_stats=summary_stats,
-            aligned_query=[r["aligned_seq_obj"].get_seq() for r in alignment_results],
-            aligned_reference=[r["aligned_seq_obj"].get_ref() for r in alignment_results],
+            aligned_query=[seq.get_seq() if seq is not None else "" for seq in aligned_sequences],
+            aligned_reference=[seq.get_ref() if seq is not None else "" for seq in aligned_sequences],
             valid_sequences=valid_sequences,
             processing_time=processing_time,
             config_used=str(config),
-            method_used=method
         )
         
         if verbose:
@@ -320,19 +270,16 @@ def _get_cut_sites(amplicon_config: AmpliconConfig) -> List[int]:
 def _generate_summary_stats(
     sequences: List[str],
     alignment_results: List,
-    called_alleles: List[AlleleCallResult],
     mutations_list: List[List[Mutation]]
 ) -> Dict[str, Any]:
     """Generate summary statistics"""
-    
+
     # Basic statistics
     stats = {
         'total_sequences': len(sequences),
         'avg_sequence_length': sum(len(seq) for seq in sequences) / len(sequences),
-        'called_alleles_count': len([a for a in called_alleles if a.is_callable()]),
-        'calling_success_rate': len([a for a in called_alleles if a.is_callable()]) / len(called_alleles),
     }
-    
+
     # Alignment statistics
     scores = [r['alignment_score'] for r in alignment_results]
     stats.update({
@@ -340,7 +287,7 @@ def _generate_summary_stats(
         'min_alignment_score': min(scores),
         'max_alignment_score': max(scores),
     })
-    
+
     # Mutation statistics
     mutation_counts = {}
     total_mutations = 0
@@ -349,11 +296,11 @@ def _generate_summary_stats(
         for mut in mut_list:
             mut_type = mut.type.value
             mutation_counts[mut_type] = mutation_counts.get(mut_type, 0) + 1
-    
+
     stats.update({
         'total_mutations': total_mutations,
-        'avg_mutations_per_allele': total_mutations / len(called_alleles) if called_alleles else 0,
+        'avg_mutations_per_sequence': total_mutations / len(mutations_list) if mutations_list else 0,
         'mutation_type_distribution': mutation_counts
     })
-    
+
     return stats

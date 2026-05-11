@@ -397,4 +397,9 @@ class TestComplexMutationCases:
         )
 
         observed_hgvs = [m.to_hgvs() for m in results.mutations[0]]
-        assert observed_hgvs == ["23_76delinsGT", "97A>T"]
+        assert observed_hgvs == [
+            "23_76delinsGT",
+            "104_211del",
+            "238_239insAA",
+            "265_266insA",
+        ]
