@@ -102,20 +102,27 @@ class AnalysisResult:
     
     def print_summary(self):
         """Print analysis results summary"""
-        print("CARLIN Sequence Analysis Results Summary")
-        print("=" * 40)
-        print(f"Configuration: {self.config_used}")
-        print(f"Processing time: {self.processing_time:.2f} seconds")
-        print("")
-        print("Sequence statistics:")
-        print(f"  Total sequences: {self.num_sequences}")
-        print(f"  Average alignment score: {self.average_alignment_score:.2f}")
-        print("")
-        print("Mutation statistics:")
-        print(f"  Total mutations: {self.total_mutations}")
+        print(self.format_summary())
+
+    def format_summary(self) -> str:
+        """Return the analysis summary as formatted text."""
+        lines = [
+            "CARLIN Sequence Analysis Results Summary",
+            "=" * 40,
+            f"Configuration: {self.config_used}",
+            f"Processing time: {self.processing_time:.2f} seconds",
+            "",
+            "Sequence statistics:",
+            f"  Total sequences: {self.num_sequences}",
+            f"  Average alignment score: {self.average_alignment_score:.2f}",
+            "",
+            "Mutation statistics:",
+            f"  Total mutations: {self.total_mutations}",
+        ]
         mut_summary = self.get_mutation_summary()
         for mut_type, count in mut_summary.items():
-            print(f"  {mut_type} type: {count}")
+            lines.append(f"  {mut_type} type: {count}")
+        return "\n".join(lines)
 
 
 def analyze_sequences(

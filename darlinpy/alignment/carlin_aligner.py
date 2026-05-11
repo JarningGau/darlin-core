@@ -108,8 +108,10 @@ class CARLINAligner:
                 
             except Exception as e:
                 if verbose:
-                    print(f"⚠️  Sequence normalization failed: {e}")
-                    print("   Continuing with original alignment results")
+                    logger.warning(
+                        "Sequence normalization failed; continuing with original alignment results: %s",
+                        e,
+                    )
         
         # Re-encode for statistical calculation
         if sanitize and sanitized_aligned_seq:

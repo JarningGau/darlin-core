@@ -1,15 +1,8 @@
-#!/usr/bin/env python3
 """
 测试配置系统
 """
 
 import numpy as np
-import sys
-import os
-
-# 添加路径以便导入模块
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
 from darlinpy.config import AmpliconConfig, get_original_carlin_config, ScoringConfig, get_default_scoring_config
 
 
@@ -24,10 +17,6 @@ class TestAmpliconConfig:
         assert config.sequence.pam == "TGGAGTC"
         assert config.sequence.prefix == "CGCCG"
         assert config.sequence.postfix == "TGGGAGCT"
-        
-        print("✅ 原始CARLIN配置加载成功")
-        print(f"   - CARLIN序列长度: {len(config.carlin_sequence)} bp")
-        print(f"   - 完整序列长度: {len(config.full_sequence)} bp")
     
     def test_sequence_structure(self):
         """测试序列结构"""
@@ -49,11 +38,6 @@ class TestAmpliconConfig:
         # 包含9个PAM序列 (最后一个segment后面没有PAM)
         pam_count = carlin_seq.count(config.sequence.pam)
         assert pam_count == 9
-        
-        print("✅ 序列结构验证通过")
-        print(f"   - Prefix: {config.sequence.prefix}")
-        print(f"   - Postfix: {config.sequence.postfix}")
-        print(f"   - PAM count: {pam_count}")
     
     def test_positions(self):
         """测试位置计算"""
@@ -81,11 +65,6 @@ class TestAmpliconConfig:
             assert cutsite_start == consite_end
             assert cutsite_end == segment_end
             assert cutsite_end - cutsite_start == 7
-        
-        print("✅ 位置计算验证通过")
-        print(f"   - Segments: {len(config.positions['segments'])}")
-        print(f"   - Consites: {len(config.positions['consites'])}")
-        print(f"   - Cutsites: {len(config.positions['cutsites'])}")
     
     def test_penalty_arrays(self):
         """测试惩罚数组"""
@@ -107,11 +86,6 @@ class TestAmpliconConfig:
         assert close_penalty.min() >= 0
         assert open_penalty.max() <= 20  # 合理的上限
         assert close_penalty.max() <= 20
-        
-        print("✅ 惩罚数组验证通过")
-        print(f"   - 数组长度: {len(open_penalty)}")
-        print(f"   - Open penalty range: {open_penalty.min():.1f} - {open_penalty.max():.1f}")
-        print(f"   - Close penalty range: {close_penalty.min():.1f} - {close_penalty.max():.1f}")
     
     def test_motif_info(self):
         """测试motif信息查询"""
@@ -139,8 +113,6 @@ class TestAmpliconConfig:
             motif_info = config.get_motif_info(pam_start + 2)  # PAM内的位置
             assert motif_info['type'] == 'pam'
             assert motif_info['motif_id'] == 0
-        
-        print("✅ Motif信息查询验证通过")
 
 
 class TestScoringConfig:
@@ -169,11 +141,6 @@ class TestScoringConfig:
         # 验证gap得分
         assert config.get_score(0, 1) == 0.0  # gap-A
         assert config.get_score(1, 0) == 0.0  # A-gap
-        
-        print("✅ NUC44评分矩阵验证通过")
-        print(f"   - 矩阵类型: {config.matrix_type}")
-        print(f"   - 匹配得分: {config.get_score(1, 1)}")
-        print(f"   - 不匹配得分: {config.get_score(1, 2)}")
     
     def test_simple_matrix(self):
         """测试简单评分矩阵"""
@@ -182,10 +149,6 @@ class TestScoringConfig:
         # 验证自定义得分
         assert config.get_score(1, 1) == 10.0  # A-A匹配
         assert config.get_score(1, 2) == -2.0  # A-C不匹配
-        
-        print("✅ 简单评分矩阵验证通过")
-        print(f"   - 匹配得分: {config.get_score(1, 1)}")
-        print(f"   - 不匹配得分: {config.get_score(1, 2)}")
     
     def test_transition_transversion_matrix(self):
         """测试转换/颠换评分矩阵"""
@@ -206,47 +169,4 @@ class TestScoringConfig:
         # 验证颠换
         assert config.get_score(1, 2) == -4.0  # A-C颠换
         assert config.get_score(1, 4) == -4.0  # A-T颠换
-        
-        print("✅ 转换/颠换评分矩阵验证通过")
-        print(f"   - 匹配得分: {config.get_score(1, 1)}")
-        print(f"   - 转换得分: {config.get_score(1, 3)}")
-        print(f"   - 颠换得分: {config.get_score(1, 2)}")
 
-
-def main():
-    """主测试函数"""
-    print("=== 测试配置系统 ===")
-    print()
-    
-    # 测试扩增子配置
-    amplicon_test = TestAmpliconConfig()
-    amplicon_test.test_load_original_carlin()
-    amplicon_test.test_sequence_structure()
-    amplicon_test.test_positions()
-    amplicon_test.test_penalty_arrays()
-    amplicon_test.test_motif_info()
-    
-    print()
-    
-    # 测试评分配置
-    scoring_test = TestScoringConfig()
-    scoring_test.test_nuc44_matrix()
-    scoring_test.test_simple_matrix()
-    scoring_test.test_transition_transversion_matrix()
-    
-    print()
-    print("🎉 所有配置测试通过！")
-    
-    # 显示配置摘要
-    print()
-    print("=== 配置摘要 ===")
-    config = get_original_carlin_config()
-    print(config.summary())
-    
-    print()
-    scoring_config = get_default_scoring_config()
-    print(scoring_config.summary())
-
-
-if __name__ == "__main__":
-    main() 

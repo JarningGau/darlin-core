@@ -2,28 +2,23 @@
 
 `darlinpy` is a library-only Python package for DARLIN/CARLIN sequence analysis. It aligns edited lineage-tracing amplicons to locus-specific references and converts edits into HGVS-like mutation annotations.
 
-## Support Boundary
+## Repository Layout
 
-- Supported interface: top-level Python imports such as `darlinpy.analyze_sequences`, `darlinpy.AmpliconConfig`, and `darlinpy.build_carlin_config`
-- Internal modules are implementation details unless they are explicitly re-exported from `darlinpy`
-- `bin/` is legacy/internal and is not part of the supported user interface
+- `darlinpy/`: supported library package
+- `tests/`: maintained pytest coverage for the supported library contract
+- `benchmarks/`: maintainer-only performance experiments, not part of default verification
+- `scripts/`: maintainer-only helper scripts, not supported user interfaces
 
 ## Installation
 
-The package requires the compiled C++ extension in `darlinpy/alignment/_cas9_align.cpp`.
-
 ```bash
 pip install -e .
+
+## Verify installation
 python -c "from darlinpy.alignment.cas9_align import HAS_CPP_IMPL; assert HAS_CPP_IMPL is True"
 ```
 
-For local quality checks, this repository uses `pixi`:
-
-```bash
-pixi run quality
-```
-
-## Minimal Example
+## Quick Start
 
 ```python
 from darlinpy import analyze_sequences
@@ -49,14 +44,6 @@ The supported DataFrame columns are:
 - `aligned_ref`
 - `scores`
 - `mutations`
-
-Empty mutation results are reported as empty strings.
-
-## Supported Arrays
-
-- `Col1a1`
-- `Rosa`
-- `Tigre`
 
 ## Build Your Customized Arrays
 ```python
@@ -92,19 +79,16 @@ template = {
 build_carlin_config(template, output_path="custom_array.json")
 ```
 
-## Developer Verification
+## Supported Arrays
 
-Run the full test suite in the existing development environment:
+- `Col1a1`
+- `Rosa`
+- `Tigre`
 
-```bash
-conda run -n darlinpy-test python -m pytest -q
-```
 
-Run the maintained lint + test workflow:
+## Developers
 
-```bash
-pixi run quality
-```
+See [DEVELOPERS.md](DEVELOPERS.md)
 
 ## Citation
 

@@ -131,6 +131,21 @@ class TestAnalysisResult:
         assert "Average alignment score" in captured.out
         assert "Successfully called alleles" not in captured.out
 
+    def test_analysis_result_format_summary_returns_text_without_printing(self, capsys):
+        result = AnalysisResult(
+            mutations=[],
+            alignment_scores=[85.5],
+            summary_stats={},
+            config_used="Col1a1",
+        )
+
+        summary = result.format_summary()
+        captured = capsys.readouterr()
+
+        assert "CARLIN Sequence Analysis Results Summary" in summary
+        assert "Configuration: Col1a1" in summary
+        assert captured.out == ""
+
     def test_analysis_result_to_df_uses_stable_empty_mutation_string(self):
         result = AnalysisResult(
             mutations=[[]],
@@ -248,6 +263,21 @@ class TestAnalyzeSequences:
 
         assert [m.to_hgvs() for m in merged.mutations[0]] == ["22_23insAA", "50_265delinsGG"]
         assert [m.to_hgvs() for m in split.mutations[0]] == ["22_23insAA", "50_263del", "265_265delinsG"]
+
+    def test_align_sequence_sanitization_failure_is_quiet_by_default(self, monkeypatch, capsys):
+        from darlinpy.alignment import create_default_aligner
+
+        aligner = create_default_aligner()
+
+        def explode(_aligned_seq):
+            raise ValueError("synthetic sanitization failure")
+
+        monkeypatch.setattr(aligner, "_perform_sanitization", explode)
+        result = aligner.align_sequence(aligner.reference_sequence, verbose=False, sanitize=True)
+        captured = capsys.readouterr()
+
+        assert captured.out == ""
+        assert result["sanitized"] is False
 
     def test_ca_benchmark_rows_match_truth_for_adjacent_merge_cases(self):
         benchmark_path = Path("tests/data/CA_benchmark.tsv")

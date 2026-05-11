@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 集成测试 - 验证CARLIN比对系统的端到端功能
 """
