@@ -144,13 +144,15 @@ class CARLINAligner:
         return result
     
     def align_sequences(self, sequences: List[str], 
-                       verbose: bool = False) -> List[Dict]:
+                       verbose: bool = False,
+                       sanitize: bool = True) -> List[Dict]:
         """
         Batch align multiple sequences
         
         Args:
             sequences: List of sequences
             verbose: Whether to show detailed information
+            sanitize: Whether to perform sequence normalization for each alignment
             
         Returns:
             List[Dict]: List of alignment results
@@ -162,7 +164,7 @@ class CARLINAligner:
                 print(f"\n=== Aligning sequence {i+1}/{len(sequences)} ===")
             
             try:
-                result = self.align_sequence(seq, verbose=verbose)
+                result = self.align_sequence(seq, verbose=verbose, sanitize=sanitize)
                 results.append(result)
             except Exception as e:
                 logger.warning("Sequence %s alignment failed: %s", i + 1, e)

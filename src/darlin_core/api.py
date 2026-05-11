@@ -132,6 +132,7 @@ def analyze_sequences(
     merge_adjacent_mutations: bool = True,
     space: int = 3,
     verbose: bool = False,
+    sanitize: bool = True,
     min_sequence_length: int = 50
 ) -> AnalysisResult:
     """
@@ -144,6 +145,7 @@ def analyze_sequences(
         merge_adjacent_mutations: Whether to merge adjacent mutations
         space: Maximum reference-space gap allowed when merging adjacent mutations
         verbose: Whether to show detailed information
+        sanitize: Whether to normalize aligned sequences (prefix/postfix and conserved regions) before mutation annotation
         min_sequence_length: Minimum sequence length threshold, sequences shorter than this will be filtered
         
     Returns:
@@ -190,7 +192,7 @@ def analyze_sequences(
             print("Performing sequence alignment...")
         
         aligner = CARLINAligner(amplicon_config=amplicon_config)
-        alignment_results = aligner.align_sequences(valid_sequences)
+        alignment_results = aligner.align_sequences(valid_sequences, sanitize=sanitize)
         
         # Extract alignment scores and sequences
         alignment_scores = [result['alignment_score'] for result in alignment_results]

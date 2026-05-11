@@ -178,6 +178,7 @@ class TestAnalyzeSequences:
             "merge_adjacent_mutations",
             "space",
             "verbose",
+            "sanitize",
             "min_sequence_length",
         ]
 
@@ -263,6 +264,47 @@ class TestAnalyzeSequences:
 
         assert [m.to_hgvs() for m in merged.mutations[0]] == ["22_23insAA", "50_265delinsGG"]
         assert [m.to_hgvs() for m in split.mutations[0]] == ["22_23insAA", "50_263del", "265_265delinsG"]
+
+    def test_analyze_sequences_forwards_sanitize_to_align_sequences(self, monkeypatch):
+        from darlin_core.alignment.carlin_aligner import CARLINAligner
+
+        captured = []
+        real_align_sequences = CARLINAligner.align_sequences
+
+        def spy(self, sequences, verbose=False, sanitize=True):
+            captured.append(sanitize)
+            return real_align_sequences(self, sequences, verbose=verbose, sanitize=sanitize)
+
+        monkeypatch.setattr(CARLINAligner, "align_sequences", spy)
+
+        from darlin_core.config.amplicon_configs import load_carlin_config_by_locus
+
+        ref = load_carlin_config_by_locus("Col1a1").get_full_reference_sequence()
+        chunk = ref[:200]
+
+        analyze_sequences([chunk], config="Col1a1", verbose=False)
+        analyze_sequences([chunk], config="Col1a1", verbose=False, sanitize=False)
+
+        assert captured == [True, False]
+
+    def test_align_sequences_passes_sanitize_to_align_sequence(self, monkeypatch):
+        from darlin_core.alignment import create_default_aligner
+
+        aligner = create_default_aligner()
+        seen = []
+        orig = aligner.align_sequence
+
+        def cap(seq, verbose=False, sanitize=True):
+            seen.append(sanitize)
+            return orig(seq, verbose=verbose, sanitize=sanitize)
+
+        monkeypatch.setattr(aligner, "align_sequence", cap)
+        seq = "ACGT" * 15
+        aligner.align_sequences([seq], sanitize=False)
+        assert seen == [False]
+        seen.clear()
+        aligner.align_sequences([seq])
+        assert seen == [True]
 
     def test_align_sequence_sanitization_failure_is_quiet_by_default(self, monkeypatch, capsys):
         from darlin_core.alignment import create_default_aligner
