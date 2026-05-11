@@ -6,7 +6,6 @@
 
 - `src/darlin_core/`: supported library package
 - `tests/`: maintained pytest coverage for the supported library contract
-- `benchmarks/`: maintainer-only performance experiments, not part of default verification
 - `scripts/`: maintainer-only helper scripts, not supported user interfaces
 
 ## Installation

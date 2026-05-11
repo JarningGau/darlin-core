@@ -6,7 +6,6 @@ This repository is maintained as a Python library, not as a supported CLI tool. 
 
 - The maintained user interface is the Python library API.
 - Internal submodules may change unless they are explicitly re-exported from `darlin_core`.
-- `benchmarks/` contains maintainer-only performance experiments and is not part of default verification.
 - `scripts/` contains maintainer-only helper scripts and is not part of the supported user interface.
 
 ## Verification
