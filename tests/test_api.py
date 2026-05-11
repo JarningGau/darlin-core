@@ -37,8 +37,16 @@ class TestAnalysisResult:
         assert result.num_sequences == 3
         assert result.total_mutations == 0
         assert abs(result.average_alignment_score - 85.3) < 0.1
-        assert not hasattr(result, "num_called_alleles")
-        assert not hasattr(result, "calling_success_rate")
+        assert sorted(result.__dataclass_fields__) == [
+            "aligned_query",
+            "aligned_reference",
+            "alignment_scores",
+            "config_used",
+            "mutations",
+            "processing_time",
+            "summary_stats",
+            "valid_sequences",
+        ]
 
     def test_analysis_result_validation(self):
         with pytest.raises(ValueError):
@@ -148,9 +156,15 @@ class TestAnalyzeSequences:
     """Tests for analyze_sequences."""
 
     def test_analyze_sequences_signature_excludes_allele_calling_parameters(self):
-        params = inspect.signature(analyze_sequences).parameters
-        assert "method" not in params
-        assert "dominant_threshold" not in params
+        assert list(inspect.signature(analyze_sequences).parameters) == [
+            "sequences",
+            "config",
+            "annotate_mutations_flag",
+            "merge_adjacent_mutations",
+            "space",
+            "verbose",
+            "min_sequence_length",
+        ]
 
     def test_analyze_sequences_is_quiet_by_default(self, capsys):
         from darlinpy.config.amplicon_configs import load_carlin_config_by_locus
@@ -201,8 +215,16 @@ class TestAnalyzeSequences:
         assert len(result.aligned_reference) == len(sequences)
         assert result.config_used == "Col1a1"
         assert result.processing_time > 0
-        assert not hasattr(result, "called_alleles")
-        assert not hasattr(result, "method_used")
+        assert sorted(result.__dict__) == [
+            "aligned_query",
+            "aligned_reference",
+            "alignment_scores",
+            "config_used",
+            "mutations",
+            "processing_time",
+            "summary_stats",
+            "valid_sequences",
+        ]
 
     def test_analyze_sequences_space_parameter_controls_merging(self):
         query = "CGCCGGACTGCACGACAGTCGAAACGATGGAGTCGACACGACTCGCGCATAGGCGATGGGAGCT"

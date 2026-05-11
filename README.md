@@ -1,6 +1,6 @@
 # darlinpy
 
-`darlinpy` is a library-only Python package for DARLIN/CARLIN sequence analysis. It aligns edited lineage-tracing amplicons to locus-specific references, calls dominant alleles, and converts edits into HGVS-like mutation annotations.
+`darlinpy` is a library-only Python package for DARLIN/CARLIN sequence analysis. It aligns edited lineage-tracing amplicons to locus-specific references and converts edits into HGVS-like mutation annotations.
 
 ## Support Boundary
 
@@ -37,7 +37,7 @@ sequences = [
     "CGCCGGACTGCACGACAGTCGACCGATGGAGTCGACACGACTCGCGCATATTCGATGGAGTCGACTACAGTCGCTACGAGTATGGAGTCGATACGTAGCACGCAGAACGATGGGAGCT",
     "CGCCGGACTGCACGACAGTCGACGATGGAGTCGACACGACTCGCGCATACGATGGAGTCGACTACAGTCGCTACGACGATGGAGTCGCGAGCGCTATGAGCGACTATGGAGTCGATACGATACGCGCACGCTATGGAGTCGAGAGCGCGCTCGTCGACTATGGAGTCGCGACTGTACGCACACGCGATGGAGTCGATAGTATGCGTACACGCGATGGAGTCGAGTCGAGACGCTGACGATATGGAGTCGATACGTAGCACGCAGACGATGGGAGCT"
 ]
-results = analyze_sequences(sequences, config='Col1a1', method="exact")
+results = analyze_sequences(sequences, config="Col1a1")
 results.to_df()
 ```
 
