@@ -7,8 +7,8 @@ from setuptools import setup
 setup(
     ext_modules=[
         Pybind11Extension(
-            "darlinpy.alignment._cas9_align",
-            ["darlinpy/alignment/_cas9_align.cpp"],
+            "darlin_core.alignment._cas9_align",
+            ["src/darlin_core/alignment/_cas9_align.cpp"],
             cxx_std=17,
         )
     ],

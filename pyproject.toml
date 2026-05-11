@@ -7,7 +7,7 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "darlinpy"
+name = "darlin-core"
 version = "1.0.0"
 description = "Python implementation of CARLIN sequence analysis tools"
 readme = "README.md"
@@ -34,8 +34,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jarninggau/darlinpy"
-Repository = "https://github.com/jarninggau/darlinpy"
+Homepage = "https://github.com/jarninggau/darlin-core"
+Repository = "https://github.com/jarninggau/darlin-core"
 
 [project.optional-dependencies]
 dev = [
@@ -51,9 +51,11 @@ viz = [
 [tool.setuptools]
 include-package-data = true
 license-files = ["LICENSE"]
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
-include = ["darlinpy", "darlinpy.*"]
+where = ["src"]
+include = ["darlin_core", "darlin_core.*"]
 
 [tool.setuptools.package-data]
-"darlinpy.config" = ["data/*.json"]
+"darlin_core.config" = ["data/*.json"]
