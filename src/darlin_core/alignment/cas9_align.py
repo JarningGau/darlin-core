@@ -201,8 +201,8 @@ def cas9_align(seq: np.ndarray, ref: np.ndarray,
 
     if not HAS_CPP_IMPL:
         raise RuntimeError(
-            "darlinpy requires the compiled C++ extension "
-            "'darlinpy.alignment._cas9_align'. Reinstall the package with "
+            "darlin_core requires the compiled C++ extension "
+            "'darlin_core.alignment._cas9_align'. Reinstall the package with "
             "build dependencies available so the extension can be compiled."
         )
 

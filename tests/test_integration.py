@@ -2,8 +2,8 @@
 集成测试 - 验证CARLIN比对系统的端到端功能
 """
 
-from darlinpy.alignment import CARLINAligner, align_to_carlin, create_default_aligner
-from darlinpy.config import get_original_carlin_config
+from darlin_core.alignment import CARLINAligner, align_to_carlin, create_default_aligner
+from darlin_core.config import get_original_carlin_config
 
 
 class TestCARLINIntegration:

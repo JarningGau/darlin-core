@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import importlib
 
-from darlinpy.alignment.cas9_align import (
+from darlin_core.alignment.cas9_align import (
     cas9_align,
     cas9_align_py,
     nt2int,
@@ -16,7 +16,7 @@ from darlinpy.alignment.cas9_align import (
     HAS_CPP_IMPL,
 )
 
-cas9_align_module = importlib.import_module("darlinpy.alignment.cas9_align")
+cas9_align_module = importlib.import_module("darlin_core.alignment.cas9_align")
 
 
 class TestCAS9Align:

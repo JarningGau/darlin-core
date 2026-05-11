@@ -3,7 +3,7 @@
 """
 
 import numpy as np
-from darlinpy.config import AmpliconConfig, get_original_carlin_config, ScoringConfig, get_default_scoring_config
+from darlin_core.config import AmpliconConfig, get_original_carlin_config, ScoringConfig, get_default_scoring_config
 
 
 class TestAmpliconConfig:

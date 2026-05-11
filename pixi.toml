@@ -16,6 +16,6 @@ pandas = "*"
 
 [tasks]
 build-ext = "python -m pip install --no-build-isolation -e ."
-lint = "python -m ruff check darlinpy/__init__.py darlinpy/api.py darlinpy/alignment/carlin_aligner.py tests/test_api.py tests/test_packaging_metadata.py tests/test_cas9_align.py tests/test_integration.py"
+lint = "python -m ruff check src/darlin_core/__init__.py src/darlin_core/api.py src/darlin_core/alignment/carlin_aligner.py tests/test_api.py tests/test_packaging_metadata.py tests/test_cas9_align.py tests/test_integration.py"
 test = "python -m pytest -q"
 quality = { depends-on = ["build-ext", "lint", "test"] }

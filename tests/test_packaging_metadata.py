@@ -27,3 +27,18 @@ def test_extension_build_targets_renamed_package():
 def test_repository_uses_src_package_root_only():
     assert Path("src/darlin_core").is_dir()
     assert not Path("darlinpy").exists()
+
+
+def test_public_package_name_is_darlin_core():
+    import darlin_core
+
+    assert darlin_core.__name__ == "darlin_core"
+
+
+def test_config_package_data_loads_from_installed_package():
+    from darlin_core.config.amplicon_configs import load_carlin_config_by_locus
+
+    config = load_carlin_config_by_locus("Col1a1")
+
+    assert config is not None
+    assert config.get_full_reference_sequence().startswith("GAGCTGTACAAGTAAGCGGC")

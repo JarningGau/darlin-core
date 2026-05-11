@@ -1,10 +1,10 @@
-# darlinpy
+# darlin-core
 
-`darlinpy` is a library-only Python package for DARLIN/CARLIN sequence analysis. It aligns edited lineage-tracing amplicons to locus-specific references and converts edits into HGVS-like mutation annotations.
+`darlin_core` is a library-only Python package for DARLIN/CARLIN sequence analysis. It aligns edited lineage-tracing amplicons to locus-specific references and converts edits into HGVS-like mutation annotations.
 
 ## Repository Layout
 
-- `darlinpy/`: supported library package
+- `src/darlin_core/`: supported library package
 - `tests/`: maintained pytest coverage for the supported library contract
 - `benchmarks/`: maintainer-only performance experiments, not part of default verification
 - `scripts/`: maintainer-only helper scripts, not supported user interfaces
@@ -15,14 +15,14 @@
 pip install -e .
 
 ## Verify installation
-python -c "from darlinpy.alignment.cas9_align import HAS_CPP_IMPL; assert HAS_CPP_IMPL is True"
+python -c "from darlin_core.alignment.cas9_align import HAS_CPP_IMPL; assert HAS_CPP_IMPL is True"
 ```
 
 ## Quick Start
 
 ```python
-from darlinpy import analyze_sequences
-from darlinpy.config.amplicon_configs import load_carlin_config_by_locus
+from darlin_core import analyze_sequences
+from darlin_core.config.amplicon_configs import load_carlin_config_by_locus
 
 ## check the reference sequence
 reference = load_carlin_config_by_locus("Col1a1").get_full_reference_sequence()
@@ -47,7 +47,7 @@ The supported DataFrame columns are:
 
 ## Build Your Customized Arrays
 ```python
-from darlinpy import analyze_sequences, AmpliconConfig, build_carlin_config
+from darlin_core import analyze_sequences, AmpliconConfig, build_carlin_config
 
 # Custom amplicon configuration
 ## Col1a1 array (CA)

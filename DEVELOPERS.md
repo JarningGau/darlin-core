@@ -1,11 +1,11 @@
 # Developer Overview
 
-This repository is maintained as a Python library, not as a supported CLI tool. The stable user-facing API is the top-level `darlinpy` package, especially `analyze_sequences`, `AmpliconConfig`, and `build_carlin_config`.
+This repository is maintained as a Python library, not as a supported CLI tool. The stable user-facing API is the top-level `darlin_core` package, especially `analyze_sequences`, `AmpliconConfig`, and `build_carlin_config`.
 
 ## Support Boundary
 
 - The maintained user interface is the Python library API.
-- Internal submodules may change unless they are explicitly re-exported from `darlinpy`.
+- Internal submodules may change unless they are explicitly re-exported from `darlin_core`.
 - `bin/` is legacy/internal and should not be documented as a supported user entry point.
 - `benchmarks/` contains maintainer-only performance experiments and is not part of default verification.
 - `scripts/` contains maintainer-only helper scripts and is not part of the supported user interface.
@@ -15,7 +15,7 @@ This repository is maintained as a Python library, not as a supported CLI tool. 
 Run the main test suite:
 
 ```bash
-conda run -n darlinpy-test python -m pytest -q
+conda run -n darlin-core-test python -m pytest -q
 ```
 
 Run the maintained quality checks:
@@ -46,7 +46,7 @@ pixi exec -s python=3.12 -s tox tox -e py312-max
 
 ## Build Notes
 
-The compiled extension in `darlinpy/alignment/_cas9_align.cpp` is required. If you need to rebuild it manually:
+The compiled extension in `src/darlin_core/alignment/_cas9_align.cpp` is required. If you need to rebuild it manually:
 
 ```bash
 python setup.py build_ext --inplace

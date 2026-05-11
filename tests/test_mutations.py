@@ -5,8 +5,8 @@ Mutation annotation tests.
 
 import pytest
 
-from darlinpy.alignment.aligned_seq import AlignedSEQ
-from darlinpy.mutations import Mutation, MutationIdentifier, MutationType, annotate_mutations
+from darlin_core.alignment.aligned_seq import AlignedSEQ
+from darlin_core.mutations import Mutation, MutationIdentifier, MutationType, annotate_mutations
 
 
 class TestMutation:

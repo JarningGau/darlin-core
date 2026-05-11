@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Compare darlinpy calls to MATLAB truth for Col1a1 (CA).
+Compare darlin_core calls to MATLAB truth for Col1a1 (CA).
 
 Input: tests/data/CA_matlab.tsv with columns:
   - query
@@ -9,7 +9,7 @@ Input: tests/data/CA_matlab.tsv with columns:
 Output TSV columns:
   1) query
   2) matlab
-  3) darlinpy (mutation)
+  3) darlin_core (mutation)
   4) aligned_query
   5) aligned_ref
 """
@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from darlinpy import analyze_sequences
+from darlin_core import analyze_sequences
 
 
 def main() -> None:
@@ -46,7 +46,7 @@ def main() -> None:
         {
             "query": df["query"],
             "matlab": in_df["matlab"],
-            "darlinpy": df["mutations"],
+            "darlin_core": df["mutations"],
             "aligned_query": df["aligned_query"],
             "aligned_ref": df["aligned_ref"],
         }

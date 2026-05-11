@@ -2,8 +2,8 @@
 测试序列标准化功能
 """
 
-from darlinpy.alignment import AlignedSEQ, AlignedSEQMotif, SequenceSanitizer, desemble_sequence, create_default_aligner
-from darlinpy.config import get_original_carlin_config
+from darlin_core.alignment import AlignedSEQ, AlignedSEQMotif, SequenceSanitizer, desemble_sequence, create_default_aligner
+from darlin_core.config import get_original_carlin_config
 
 
 class TestAlignedSEQMotif:

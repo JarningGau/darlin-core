@@ -9,19 +9,19 @@ from pathlib import Path
 
 import pytest
 
-from darlinpy.api import AnalysisResult, analyze_sequences
-from darlinpy.mutations.mutation import Mutation, MutationType
+from darlin_core.api import AnalysisResult, analyze_sequences
+from darlin_core.mutations.mutation import Mutation, MutationType
 
 
 class TestAnalysisResult:
     """Tests for the supported AnalysisResult contract."""
 
     def test_top_level_exports_are_library_entry_points(self):
-        import darlinpy
+        import darlin_core
 
-        assert "analyze_sequences" in darlinpy.__all__
-        assert "AmpliconConfig" in darlinpy.__all__
-        assert "build_carlin_config" in darlinpy.__all__
+        assert "analyze_sequences" in darlin_core.__all__
+        assert "AmpliconConfig" in darlin_core.__all__
+        assert "build_carlin_config" in darlin_core.__all__
 
     def test_analysis_result_creation(self):
         result = AnalysisResult(
@@ -182,7 +182,7 @@ class TestAnalyzeSequences:
         ]
 
     def test_analyze_sequences_is_quiet_by_default(self, capsys):
-        from darlinpy.config.amplicon_configs import load_carlin_config_by_locus
+        from darlin_core.config.amplicon_configs import load_carlin_config_by_locus
 
         ref = load_carlin_config_by_locus("Col1a1").get_full_reference_sequence()
         analyze_sequences([ref], config="Col1a1", verbose=False)
@@ -207,7 +207,7 @@ class TestAnalyzeSequences:
             analyze_sequences(short_sequences)
 
     def test_analyze_valid_sequences_basic(self):
-        from darlinpy.config.amplicon_configs import load_carlin_config_by_locus
+        from darlin_core.config.amplicon_configs import load_carlin_config_by_locus
 
         carlin_config = load_carlin_config_by_locus("Col1a1")
         carlin_ref = carlin_config.get_full_reference_sequence()
@@ -265,7 +265,7 @@ class TestAnalyzeSequences:
         assert [m.to_hgvs() for m in split.mutations[0]] == ["22_23insAA", "50_263del", "265_265delinsG"]
 
     def test_align_sequence_sanitization_failure_is_quiet_by_default(self, monkeypatch, capsys):
-        from darlinpy.alignment import create_default_aligner
+        from darlin_core.alignment import create_default_aligner
 
         aligner = create_default_aligner()
 
@@ -306,7 +306,7 @@ class TestAnalyzeSequences:
             assert observed == row["truth"]
 
     def test_analyze_sequences_expected_delins_annotation(self):
-        from darlinpy import analyze_sequences as analyze_sequences_public
+        from darlin_core import analyze_sequences as analyze_sequences_public
 
         sequences = [
             "CGCCGGACTGCACGACAGTCGAGCGATGGGAGCT",
@@ -323,7 +323,7 @@ class TestAnalyzeSequences:
         assert df["mutations"].tolist() == ["23_265delinsG", ""]
 
     def test_analyze_sequences_no_mutations(self):
-        from darlinpy.config.amplicon_configs import load_carlin_config_by_locus
+        from darlin_core.config.amplicon_configs import load_carlin_config_by_locus
 
         carlin_config = load_carlin_config_by_locus("Col1a1")
         carlin_ref = carlin_config.get_full_reference_sequence()
@@ -338,7 +338,7 @@ class TestAnalyzeSequences:
         assert all(len(muts) == 0 for muts in result.mutations)
 
     def test_analyze_sequences_verbose(self, capsys):
-        from darlinpy.config.amplicon_configs import load_carlin_config_by_locus
+        from darlin_core.config.amplicon_configs import load_carlin_config_by_locus
 
         carlin_config = load_carlin_config_by_locus("Col1a1")
         carlin_ref = carlin_config.get_full_reference_sequence()
@@ -352,7 +352,7 @@ class TestAnalyzeSequences:
         assert "Allele calling completed" not in captured.out
 
     def test_analyze_different_configs(self):
-        from darlinpy.config.amplicon_configs import load_carlin_config_by_locus
+        from darlin_core.config.amplicon_configs import load_carlin_config_by_locus
 
         carlin_config = load_carlin_config_by_locus("Col1a1")
         carlin_ref = carlin_config.get_full_reference_sequence()
@@ -363,7 +363,7 @@ class TestAnalyzeSequences:
             assert result.config_used == config
 
     def test_analyze_custom_parameters(self):
-        from darlinpy.config.amplicon_configs import load_carlin_config_by_locus
+        from darlin_core.config.amplicon_configs import load_carlin_config_by_locus
 
         carlin_config = load_carlin_config_by_locus("Col1a1")
         carlin_ref = carlin_config.get_full_reference_sequence()
@@ -382,7 +382,7 @@ class TestConfigLoading:
     """Tests for configuration loading helpers."""
 
     def test_load_config_by_locus(self):
-        from darlinpy.config.amplicon_configs import load_carlin_config_by_locus
+        from darlin_core.config.amplicon_configs import load_carlin_config_by_locus
 
         assert load_carlin_config_by_locus("Col1a1") is not None
         assert load_carlin_config_by_locus("Rosa") is not None
@@ -393,7 +393,7 @@ class TestStatistics:
     """Tests for summary statistics generation."""
 
     def test_generate_summary_stats(self):
-        from darlinpy.api import _generate_summary_stats
+        from darlin_core.api import _generate_summary_stats
 
         sequences = ["ACGTACGT" * 25, "TGCATGCA" * 25]
         alignment_results = [
