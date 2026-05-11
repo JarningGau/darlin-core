@@ -287,6 +287,29 @@ class TestAnalyzeSequences:
 
         assert captured == [True, False]
 
+    def test_analyze_sequences_sanitize_false_returns_alignment_and_mutations(self):
+        """sanitize=False keeps scores and seq2 HGVS; seq1 gains extra 41_41delinsA vs sanitized path."""
+        seqs = [
+            "CGCCGGACTGCACGACAGTCGATACGATGGAGTCGACACGACACGCGCATACGATGGATACGTAGCACGCAGACGATGGGAGCT",
+            "CGCCGGACTGCACGACAGTCGATACGATGGAGTCGACACGACTCGCGCATACGATGGATACGTAGCACGCAGACGATGGGAGCT",
+        ]
+        with_sanitize = analyze_sequences(seqs, config="Col1a1", sanitize=True, verbose=False)
+        without_sanitize = analyze_sequences(seqs, config="Col1a1", sanitize=False, verbose=False)
+
+        assert with_sanitize.alignment_scores == without_sanitize.alignment_scores
+        for aq, ar in zip(without_sanitize.aligned_query, without_sanitize.aligned_reference):
+            assert len(aq) > 0
+            assert len(ar) > 0
+
+        def hgvs_row(muts):
+            return ",".join(m.to_hgvs() for m in muts)
+
+        expected_sanitized = "22_23insTA,55_248del"
+        assert [hgvs_row(m) for m in with_sanitize.mutations] == [expected_sanitized, expected_sanitized]
+
+        assert hgvs_row(without_sanitize.mutations[0]) == "22_23insTA,41_41delinsA,55_248del"
+        assert hgvs_row(without_sanitize.mutations[1]) == expected_sanitized
+
     def test_align_sequences_passes_sanitize_to_align_sequence(self, monkeypatch):
         from darlin_core.alignment import create_default_aligner
 

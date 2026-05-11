@@ -159,8 +159,9 @@ class TestIntegratedSanitization:
         assert not result_no_sanitize['sanitized']
         assert result_with_sanitize['sanitized']
         
-        # 验证标准化后的对象
-        assert result_no_sanitize['aligned_seq_obj'] is None
+        # Raw decomposition is always available; sanitization adds normalized object
+        assert result_no_sanitize['aligned_seq_obj'] is not None
+        assert isinstance(result_no_sanitize['aligned_seq_obj'], AlignedSEQ)
         assert result_with_sanitize['aligned_seq_obj'] is not None
         assert isinstance(result_with_sanitize['aligned_seq_obj'], AlignedSEQ)
     

@@ -85,46 +85,49 @@ class CARLINAligner:
         # Decode alignment results
         aligned_query_str = int2nt(aligned_query)
         aligned_ref_str = int2nt(aligned_ref)
-        
-        # Sequence normalization (optional)
+
+        # Decompose alignment into motifs for downstream annotation (raw AlignedSEQ)
+        aligned_seq_obj = None
+        try:
+            motif_boundaries = calculate_motif_boundaries(aligned_ref_str, self.amplicon_config)
+            aligned_seq_obj = desemble_sequence(aligned_query_str, aligned_ref_str, motif_boundaries)
+        except Exception as e:
+            if verbose:
+                logger.warning(
+                    "Failed to decompose alignment into motifs; aligned_seq_obj unavailable: %s",
+                    e,
+                )
+
+        # Sequence normalization (optional); on success replace strings used for output/stats
         sanitized_aligned_seq = None
-        if sanitize:
+        if sanitize and aligned_seq_obj is not None:
             try:
-                # Decompose alignment results into motifs
-                motif_boundaries = calculate_motif_boundaries(aligned_ref_str, self.amplicon_config)
-                aligned_seq_obj = desemble_sequence(aligned_query_str, aligned_ref_str, motif_boundaries)
-                
-                # Perform normalization
                 sanitized_seq = self._perform_sanitization(aligned_seq_obj)
-                
-                # Update alignment results with normalized sequence
-                sanitized_aligned_query_str = sanitized_seq.get_seq()
-                sanitized_aligned_ref_str = sanitized_seq.get_ref()
                 sanitized_aligned_seq = sanitized_seq
-                
-                # Use normalized sequence for subsequent analysis
-                aligned_query_str = sanitized_aligned_query_str
-                aligned_ref_str = sanitized_aligned_ref_str
-                
+                aligned_query_str = sanitized_seq.get_seq()
+                aligned_ref_str = sanitized_seq.get_ref()
             except Exception as e:
                 if verbose:
                     logger.warning(
                         "Sequence normalization failed; continuing with original alignment results: %s",
                         e,
                     )
-        
+
         # Re-encode for statistical calculation
         if sanitize and sanitized_aligned_seq:
             # Use normalized sequence for statistics
             aligned_query_for_stats = nt2int(aligned_query_str)
-            aligned_ref_for_stats = nt2int(aligned_ref_str) 
+            aligned_ref_for_stats = nt2int(aligned_ref_str)
         else:
             aligned_query_for_stats = aligned_query
             aligned_ref_for_stats = aligned_ref
-        
+
         # Calculate alignment statistics
         stats = self._calculate_alignment_stats(aligned_query_for_stats, aligned_ref_for_stats)
-        
+
+        # Prefer sanitized object when present; otherwise raw motif decomposition for API consumers
+        aligned_seq_for_result = sanitized_aligned_seq if sanitized_aligned_seq is not None else aligned_seq_obj
+
         # Build result
         result = {
             'query_sequence': query_sequence,
@@ -135,7 +138,7 @@ class CARLINAligner:
             'statistics': stats,
             'motif_analysis': self._analyze_motifs(aligned_query_for_stats, aligned_ref_for_stats),
             'sanitized': sanitize and sanitized_aligned_seq is not None,
-            'aligned_seq_obj': sanitized_aligned_seq if sanitized_aligned_seq else None
+            'aligned_seq_obj': aligned_seq_for_result,
         }
         
         if verbose:
